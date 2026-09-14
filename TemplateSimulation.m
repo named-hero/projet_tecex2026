@@ -47,7 +47,7 @@ medium.alpha_power = 1.5;
 
 % Afin d'avoir une onde qui se reflete aux extremites, une partie du
 % domaine doit avoir les caractéristiques de l'air. Donc :
-% Vitesse du son : 330 m/s
+% Vitesse du son : 330 dfdfm/s
 % Densité : 10 kg/m^3 (Pas exactement comme l'air mais evite des erreurs numeriques)
 
 airSpeed = 330;     % [m/s]

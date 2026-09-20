@@ -113,13 +113,48 @@ function piano = Piano()
     piano.douceur_epaule_i = 5;  % Plus grand = courbe plus progressive.
 end
 
+function medium = customShape(medium, pixels_map, largeur_cible, materiau)    
+    if ~islogical(pixels_map)
+        pixels_map = pixels_map ~= 0;
+    end
+    
+    [r, c] = find(pixels_map);
+    if isempty(r)
+        error('La forme personnalisée est vide.');
+    end
+    
+    pixels_map = pixels_map(min(r):max(r), min(c):max(c));
+    
+    largeur_source = size(pixels_map, 2);
+    echelle = largeur_cible / largeur_source;
+    masque = imresize(pixels_map, echelle, 'nearest') > 0;
+    
+    [NxLocal, NyLocal] = size(medium.sound_speed);
+    [h, w] = size(masque);
+    
+    i0 = round((NxLocal - h) / 2) + 1;
+    j0 = round((NyLocal - w) / 2) + 1;
+    i1 = i0 + h - 1;
+    j1 = j0 + w - 1;
+    
+    if i0 < 1 || j0 < 1 || i1 > NxLocal || j1 > NyLocal
+        error('La forme redimensionnée dépasse la grille.');
+    end
+    
+    mask = false(NxLocal, NyLocal);
+    mask(i0:i1, j0:j1) = masque;
+    
+    medium.sound_speed(mask) = materiau.sound_speed;
+    medium.density(mask) = materiau.density;
+end
+
 
 %% Boucle de simulation
 for forme = formes_a_tester
     if forme.basique
         nom_forme = formes_basique{forme.index};
     else
-        [~, name, ext] = fileparts(pathStr);
+        [~, name, ~] = fileparts(pathStr);
         nom_forme = name;
     end
     %% Shape of the medium
@@ -132,70 +167,76 @@ for forme = formes_a_tester
     % Tous les contours restent a l'interieur de la bordure d'air.
     bordure = I >= 4 & I <= 120 & J >= 4 & J <= 56;
 
-    %% Choix de la geometrie
-    switch forme.index
-        case 1  % Cercle : rayon maximal compatible avec la largeur initiale
-            cercle = Cercle(Nx/2, Ny/2, 26);
-            matiere = (I-cercle.centre_i).^2 + (J-cercle.centre_j).^2 ...
-                <= cercle.rayon^2;
-        case 2  % Rectangle
-            rect = Rectangle(116, 52);
-            matiere = I>=rect.i_min & I<=rect.i_max ...
-                & J>=rect.j_min & J<=rect.j_max;
-        case 3  % Trapeze avec trou et deux coupes
-            trapeze = Trapeze();
-            bord_incline = trapeze.j_max - ...
-                round(trapeze.inclinaison*(I-trapeze.i_min));
-            coupe_1 = (I-trapeze.i_min)/trapeze.coupe_1_i ...
-                + (J-trapeze.j_min)/trapeze.coupe_1_j <= 1;
-            coupe_2 = (trapeze.i_max-I)/trapeze.coupe_2_i ...
-                + (J-trapeze.j_min)/trapeze.coupe_2_j <= 1;
-            trou = trapeze.rayon_trou>0 & ...
-                (I-trapeze.trou_i).^2 + (J-trapeze.trou_j).^2 ...
-                <= trapeze.rayon_trou^2;
-            matiere = I>=trapeze.i_min & I<=trapeze.i_max ...
-                & J>=trapeze.j_min & J<=bord_incline ...
-                & ~coupe_1 & ~coupe_2 & ~trou;
-        case 4  % Palette de peintre : trou en haut, encoche arrondie profonde
-            palette = Palette_Couleur();
-            ovale = ((I-palette.centre_i)/palette.rayon_i).^2 ...
-                + ((J-palette.centre_j)/palette.rayon_j).^2 <= 1;
-            trou_pouce = ((I-palette.trou_i)/palette.trou_rayon_i).^2 ...
-                + ((J-palette.trou_j)/palette.trou_rayon_j).^2 <= 1;
-            encoche = ((I-palette.encoche_i)/palette.encoche_rayon_i).^2 ...
-                + ((J-palette.encoche_j)/palette.encoche_rayon_j).^2 <= 1;
-            matiere = ovale & ~trou_pouce & ~encoche;
-        case 5  % D : cote plat a gauche, cote bombe a droite
-            forme_D = D_shape(Nx/2);
-            matiere = J>=forme_D.bord_plat_j ...
-                & ((I-forme_D.centre_i)/forme_D.rayon_i).^2 ...
-                + ((J-forme_D.bord_plat_j)/forme_D.rayon_arrondi_j).^2 <= 1;
-        case 6  % Piano a queue : voute ronde, cote gauche et clavier droits
-            piano = Piano();
-            jonction_i = piano.haut_i + piano.hauteur_voute_i;
-            centre_voute_j = (piano.bord_gauche_j+piano.largeur_haute_j)/2;
-            rayon_voute_j = (piano.largeur_haute_j-piano.bord_gauche_j)/2;
-            voute = I<=jonction_i & ...
-                ((I-jonction_i)/piano.hauteur_voute_i).^2 ...
-                + ((J-centre_voute_j)/rayon_voute_j).^2 <= 1;
-            bord_droit = piano.largeur_haute_j ...
-                + piano.elargissement_bas_j./ ...
-                (1+exp(-(I-piano.epaule_i)/piano.douceur_epaule_i));
-            corps = I>jonction_i & I<=piano.bas_i ...
-                & J>=piano.bord_gauche_j & J<=bord_droit;
-            matiere = voute | corps;
-    end
-    matiere = matiere & bordure; % Matière est tout les pixels que l'on va changer propriétés
-    medium.sound_speed(matiere) = materiau.sound_speed;
-    medium.density(matiere) = materiau.density;
-
-    %% Define sensor
-    % Neuf positions physiques d'impact : 3 lignes x 3 colonnes.
-    % La grille suit la partie utile de chaque forme; les comparaisons
-    % entre formes concernent donc leur surface utilisable respective.
-    % Maillage dense AUXILIAIRE pour mesurer la largeur autour de chacune.
     if forme.basique
+        %% Choix de la geometrie
+        switch forme.index
+            case 1  % Cercle : rayon maximal compatible avec la largeur initiale
+                cercle = Cercle(Nx/2, Ny/2, 26);
+                matiere = (I-cercle.centre_i).^2 + (J-cercle.centre_j).^2 ...
+                    <= cercle.rayon^2;
+            case 2  % Rectangle
+                rect = Rectangle(116, 52);
+                matiere = I>=rect.i_min & I<=rect.i_max ...
+                    & J>=rect.j_min & J<=rect.j_max;
+            case 3  % Trapeze avec trou et deux coupes
+                trapeze = Trapeze();
+                bord_incline = trapeze.j_max - ...
+                    round(trapeze.inclinaison*(I-trapeze.i_min));
+                coupe_1 = (I-trapeze.i_min)/trapeze.coupe_1_i ...
+                    + (J-trapeze.j_min)/trapeze.coupe_1_j <= 1;
+                coupe_2 = (trapeze.i_max-I)/trapeze.coupe_2_i ...
+                    + (J-trapeze.j_min)/trapeze.coupe_2_j <= 1;
+                trou = trapeze.rayon_trou>0 & ...
+                    (I-trapeze.trou_i).^2 + (J-trapeze.trou_j).^2 ...
+                    <= trapeze.rayon_trou^2;
+                matiere = I>=trapeze.i_min & I<=trapeze.i_max ...
+                    & J>=trapeze.j_min & J<=bord_incline ...
+                    & ~coupe_1 & ~coupe_2 & ~trou;
+            case 4  % Palette de peintre : trou en haut, encoche arrondie profonde
+                palette = Palette_Couleur();
+                ovale = ((I-palette.centre_i)/palette.rayon_i).^2 ...
+                    + ((J-palette.centre_j)/palette.rayon_j).^2 <= 1;
+                trou_pouce = ((I-palette.trou_i)/palette.trou_rayon_i).^2 ...
+                    + ((J-palette.trou_j)/palette.trou_rayon_j).^2 <= 1;
+                encoche = ((I-palette.encoche_i)/palette.encoche_rayon_i).^2 ...
+                    + ((J-palette.encoche_j)/palette.encoche_rayon_j).^2 <= 1;
+                matiere = ovale & ~trou_pouce & ~encoche;
+            case 5  % D : cote plat a gauche, cote bombe a droite
+                forme_D = D_shape(Nx/2);
+                matiere = J>=forme_D.bord_plat_j ...
+                    & ((I-forme_D.centre_i)/forme_D.rayon_i).^2 ...
+                    + ((J-forme_D.bord_plat_j)/forme_D.rayon_arrondi_j).^2 <= 1;
+            case 6  % Piano a queue : voute ronde, cote gauche et clavier droits
+                piano = Piano();
+                jonction_i = piano.haut_i + piano.hauteur_voute_i;
+                centre_voute_j = (piano.bord_gauche_j+piano.largeur_haute_j)/2;
+                rayon_voute_j = (piano.largeur_haute_j-piano.bord_gauche_j)/2;
+                voute = I<=jonction_i & ...
+                    ((I-jonction_i)/piano.hauteur_voute_i).^2 ...
+                    + ((J-centre_voute_j)/rayon_voute_j).^2 <= 1;
+                bord_droit = piano.largeur_haute_j ...
+                    + piano.elargissement_bas_j./ ...
+                    (1+exp(-(I-piano.epaule_i)/piano.douceur_epaule_i));
+                corps = I>jonction_i & I<=piano.bas_i ...
+                    & J>=piano.bord_gauche_j & J<=bord_droit;
+                matiere = voute | corps;
+        end
+        matiere = matiere & bordure; % Matière est tout les pixels que l'on va changer propriétés
+        medium.sound_speed(matiere) = materiau.sound_speed;
+        medium.density(matiere) = materiau.density;
+
+        %% Define sensor
+        % Neuf positions physiques d'impact : 3 lignes x 3 colonnes.
+        % La grille suit la partie utile de chaque forme; les comparaisons
+        % entre formes concernent donc leur surface utilisable respective.
+        % Maillage dense AUXILIAIRE pour mesurer la largeur autour de chacune.
         impacts = impacts_formes_basique{forme.index};
+
+    else
+        obj = load(formes_custom_plaques(forme.index));
+        medium = customShape(medium, obj.shape, Nx, materiau);
+        impacts = obj.impacts; %TODO Donne une erreur pour l'instant. Il faut ajouter les impacts d'une manière ou d'une autre
+
     end
     pas_profil = -6:6;  % 0,5 cm par pas, de -3 a +3 cm.
     sondes = impacts;
@@ -222,12 +263,14 @@ for forme = formes_a_tester
     sensor.mask(sub2ind([Nx Ny],sondes(:,1),sondes(:,2))) = true;
     [sensorI,sensorJ] = ind2sub([Nx Ny],find(sensor.mask));
     positions_sondes = [sensorI sensorJ];  % Ordre des lignes de sensor_data.
-    [ok,indices_impacts] = ismember(impacts,positions_sondes,'rows');
+    [ok, ~] = ismember(impacts,positions_sondes,'rows');
     assert(all(ok),'Impossible d''associer les 9 impacts aux signaux.')
 
     %% Source definition
     % Un seul émetteur fixe. Les 9 points sont les emplacements testes.
-    source_pos_x = 62; % TODO Implémenter l'ajout de plusieurs sources différentes
+    % TODO Implémenter l'ajout de plusieurs sources différentes
+    % TODO Cette position n'est peut-être pas valide si forme personnalisé
+    source_pos_x = 62;
     source_pos_y = 9;
     source_radius = 2;
     source_magnitude = 10;

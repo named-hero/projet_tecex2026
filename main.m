@@ -1,47 +1,59 @@
 %% Installation
 % Ajouter k-Wave au chemin MATLAB avant de lancer ce script.
 
-%% Clear
+%% Initialisation variables
 clear; clc; close all
 
-formes_a_tester = 3;  % 1=cercle, 2=rectangle, 3=trapeze, 4=palette, 5=D, 6=piano.
-seulement_geometrie = false;  % true = voir les formes sans calcul k-Wave.
-noms_formes = {'Cercle','Rectangle','Trapeze trou et deux coupes', ...
-    'Palette de peintre','Forme en D','Contour de piano'};
+%Tableau des formes
+formes_custom_plaques = {
+    "projet_tecex2026\Formes enregistrer\eye.mat"
+};
+formes_basique = {'Cercle','Rectangle','Trapeze trou et deux coupes', 'Forme en D'};
+impacts_formes_basique = {
+    [46 19; 46 30; 46 41;
+    62 19; 62 30; 62 41;
+    78 19; 78 30; 78 41];
 
-%% Reglages des formes (dimensions en points de grille : 1 point = 5 mm)
-% i augmente vers le bas des figures; j augmente vers la droite.
-% Changer une valeur ici, puis relancer seulement la forme concernee.
-cercle.centre_i = 62; cercle.centre_j = 30; cercle.rayon = 26;
+    [20 18; 20 30; 20 42;
+    62 18; 62 30; 62 42;
+    104 18; 104 30; 104 42];
 
-rectangle.i_min = 4; rectangle.i_max = 120;
-rectangle.j_min = 4; rectangle.j_max = 56;
+    [29 15; 29 27; 29 39;
+    62 15; 62 27; 62 39;
+    95 15; 95 27; 95 39];
 
-trapeze.inclinaison = 0.10;  % Plus grand = bord droit plus oblique.
-trapeze.i_min = 4; trapeze.i_max = 120;
-trapeze.j_min = 4; trapeze.j_max = 56;
-trapeze.coupe_1_i = 24; trapeze.coupe_1_j = 12;
-trapeze.coupe_2_i = 18; trapeze.coupe_2_j = 8;
-trapeze.trou_i = 108; trapeze.trou_j = 18; trapeze.rayon_trou = 4;
-% rayon_trou = 0 supprime le trou du trapeze.
+    [39 17; 39 29; 39 40;
+    58 17; 58 29; 58 40;
+    95 17; 95 29; 95 40];
+    };
 
-palette.centre_i = 62; palette.centre_j = 30;
-palette.rayon_i = 58; palette.rayon_j = 26;
-palette.trou_i = 25; palette.trou_j = 40;
-palette.trou_rayon_i = 5; palette.trou_rayon_j = 4;
-palette.encoche_i = 75; palette.encoche_j = 54;
-palette.encoche_rayon_i = 15; palette.encoche_rayon_j = 12;
-% Augmenter encoche_rayon_j creuse davantage le bord droit.
+% Points d'impact pour peinture et piano
+%case 5
+%    lignes_impacts = [31 62 93]; colonnes_impacts = [14 28 40];
+%case 6
+%    lignes_impacts = [24 61 105]; colonnes_impacts = [15 25 35];
 
-forme_D.centre_i = 62; forme_D.rayon_i = 58;
-forme_D.bord_plat_j = 4; forme_D.rayon_arrondi_j = 52;
 
-piano.haut_i = 4; piano.bas_i = 120;
-piano.bord_gauche_j = 4; piano.largeur_haute_j = 46;
-piano.hauteur_voute_i = 21;  % Taille de l'arrondi en haut.
-piano.elargissement_bas_j = 10;  % Largeur gagnee vers le bas.
-piano.epaule_i = 70;  % Position de l'elargissement vertical.
-piano.douceur_epaule_i = 5;  % Plus grand = courbe plus progressive.
+%Acier TODO Mettre les bonnnes propriétés
+materiaux(1)=struct( ...
+    'sound_speed', 3000,  ...
+    'density', 2500);
+%Aluminium TODO Mettre les bonnnes propriétés
+materiaux(2)=struct( ...
+    'sound_speed', 3000,  ...
+    'density', 2500);
+%Plastique TODO Mettre les bonnnes propriétés
+materiaux(3)=struct( ...
+    'sound_speed', 3000,  ...
+    'density', 2500);
+
+% basique : Fait référence au forme personnalisé
+% index : L'index dans le tableau
+formes_a_tester(1) = struct('index', 3, 'basique', true);
+materiau = materiaux(1);
+
+calcul_simulation = false;  % Compute simulation
+analyse_simulation = false; % Compute analyse
 
 %% Simulation grid parameter
 Nx = 124;
@@ -49,16 +61,67 @@ Ny = 60;
 dx = 5e-3;
 dy = 5e-3;
 kgrid = kWaveGrid(Nx,dx,Ny,dy);
-SoundSpeed = 3000;  % Parametres provisoires communs aux six formes
-Density = 2500;
 airSpeed = 330;
 airDensity = 10;
 
-%% Changement du pas de temps
-% Laisser k-Wave le fixer automatiquement.
+function rectangle = Rectangle(width, height)
+    rectangle.i_min = 4; rectangle.i_max = 4 + width;
+    rectangle.j_min = 4; rectangle.j_max = 4 + height;
+end
 
+function cercle = Cercle(x, y, rayon)
+    cercle.centre_i = x; 
+    cercle.centre_j = y; 
+    cercle.rayon = rayon;
+end
+
+% Seulement pour les test, pas vraiment utiliser
+function trapeze = Trapeze()
+    trapeze.inclinaison = 0.10;  % Plus grand = bord droit plus oblique.
+    trapeze.i_min = 4; trapeze.i_max = 120;
+    trapeze.j_min = 4; trapeze.j_max = 56;
+    trapeze.coupe_1_i = 24; trapeze.coupe_1_j = 12;
+    trapeze.coupe_2_i = 18; trapeze.coupe_2_j = 8;
+    trapeze.trou_i = 108; trapeze.trou_j = 18; trapeze.rayon_trou = 4;
+    % rayon_trou = 0 supprime le trou du trapeze.
+end
+
+% TODO Refaire la forme en custom
+function palette = Palette_Couleur()
+    palette.centre_i = 62; palette.centre_j = 30;
+    palette.rayon_i = 58; palette.rayon_j = 26;
+    palette.trou_i = 25; palette.trou_j = 40;
+    palette.trou_rayon_i = 5; palette.trou_rayon_j = 4;
+    palette.encoche_i = 75; palette.encoche_j = 54;
+    palette.encoche_rayon_i = 15; palette.encoche_rayon_j = 12;
+    % Augmenter encoche_rayon_j creuse davantage le bord droit
+end
+
+%TODO Réimplémenter pour contrôler 
+function forme_D = D_shape(x)
+    forme_D.centre_i = x; forme_D.rayon_i = 58; 
+    forme_D.bord_plat_j = 4; forme_D.rayon_arrondi_j = 52;
+end
+
+%TODO Refaire la forme en custom
+function piano = Piano()
+    piano.haut_i = 4; piano.bas_i = 120;
+    piano.bord_gauche_j = 4; piano.largeur_haute_j = 46;
+    piano.hauteur_voute_i = 21;  % Taille de l'arrondi en haut.
+    piano.elargissement_bas_j = 10;  % Largeur gagnee vers le bas.
+    piano.epaule_i = 70;  % Position de l'elargissement vertical.
+    piano.douceur_epaule_i = 5;  % Plus grand = courbe plus progressive.
+end
+
+
+%% Boucle de simulation
 for forme = formes_a_tester
-
+    if forme.basique
+        nom_forme = formes_basique{forme.index};
+    else
+        [~, name, ext] = fileparts(pathStr);
+        nom_forme = name;
+    end
     %% Shape of the medium
     medium.sound_speed = airSpeed * ones(Nx,Ny);
     medium.density = airDensity * ones(Nx,Ny);
@@ -70,14 +133,17 @@ for forme = formes_a_tester
     bordure = I >= 4 & I <= 120 & J >= 4 & J <= 56;
 
     %% Choix de la geometrie
-    switch forme
+    switch forme.index
         case 1  % Cercle : rayon maximal compatible avec la largeur initiale
+            cercle = Cercle(Nx/2, Ny/2, 26);
             matiere = (I-cercle.centre_i).^2 + (J-cercle.centre_j).^2 ...
                 <= cercle.rayon^2;
         case 2  % Rectangle
-            matiere = I>=rectangle.i_min & I<=rectangle.i_max ...
-                & J>=rectangle.j_min & J<=rectangle.j_max;
+            rect = Rectangle(116, 52);
+            matiere = I>=rect.i_min & I<=rect.i_max ...
+                & J>=rect.j_min & J<=rect.j_max;
         case 3  % Trapeze avec trou et deux coupes
+            trapeze = Trapeze();
             bord_incline = trapeze.j_max - ...
                 round(trapeze.inclinaison*(I-trapeze.i_min));
             coupe_1 = (I-trapeze.i_min)/trapeze.coupe_1_i ...
@@ -91,6 +157,7 @@ for forme = formes_a_tester
                 & J>=trapeze.j_min & J<=bord_incline ...
                 & ~coupe_1 & ~coupe_2 & ~trou;
         case 4  % Palette de peintre : trou en haut, encoche arrondie profonde
+            palette = Palette_Couleur();
             ovale = ((I-palette.centre_i)/palette.rayon_i).^2 ...
                 + ((J-palette.centre_j)/palette.rayon_j).^2 <= 1;
             trou_pouce = ((I-palette.trou_i)/palette.trou_rayon_i).^2 ...
@@ -99,10 +166,12 @@ for forme = formes_a_tester
                 + ((J-palette.encoche_j)/palette.encoche_rayon_j).^2 <= 1;
             matiere = ovale & ~trou_pouce & ~encoche;
         case 5  % D : cote plat a gauche, cote bombe a droite
+            forme_D = D_shape(Nx/2);
             matiere = J>=forme_D.bord_plat_j ...
                 & ((I-forme_D.centre_i)/forme_D.rayon_i).^2 ...
                 + ((J-forme_D.bord_plat_j)/forme_D.rayon_arrondi_j).^2 <= 1;
         case 6  % Piano a queue : voute ronde, cote gauche et clavier droits
+            piano = Piano();
             jonction_i = piano.haut_i + piano.hauteur_voute_i;
             centre_voute_j = (piano.bord_gauche_j+piano.largeur_haute_j)/2;
             rayon_voute_j = (piano.largeur_haute_j-piano.bord_gauche_j)/2;
@@ -116,39 +185,26 @@ for forme = formes_a_tester
                 & J>=piano.bord_gauche_j & J<=bord_droit;
             matiere = voute | corps;
     end
-    matiere = matiere & bordure;
-    medium.sound_speed(matiere) = SoundSpeed;
-    medium.density(matiere) = Density;
+    matiere = matiere & bordure; % Matière est tout les pixels que l'on va changer propriétés
+    medium.sound_speed(matiere) = materiau.sound_speed;
+    medium.density(matiere) = materiau.density;
 
     %% Define sensor
     % Neuf positions physiques d'impact : 3 lignes x 3 colonnes.
     % La grille suit la partie utile de chaque forme; les comparaisons
     % entre formes concernent donc leur surface utilisable respective.
     % Maillage dense AUXILIAIRE pour mesurer la largeur autour de chacune.
-    switch forme
-        case 1
-            lignes_impacts = [46 62 78]; colonnes_impacts = [19 30 41];
-        case 2
-            lignes_impacts = [20 62 104]; colonnes_impacts = [18 30 42];
-        case 3
-            lignes_impacts = [29 62 95]; colonnes_impacts = [15 27 39];
-        case 4
-            lignes_impacts = [39 58 95]; colonnes_impacts = [17 29 40];
-        case 5
-            lignes_impacts = [31 62 93]; colonnes_impacts = [14 28 40];
-        case 6
-            lignes_impacts = [24 61 105]; colonnes_impacts = [15 25 35];
+    if forme.basique
+        impacts = impacts_formes_basique{forme.index};
     end
-    [IG,JG] = ndgrid(lignes_impacts,colonnes_impacts);
-    impacts = [IG(:) JG(:)];
     pas_profil = -6:6;  % 0,5 cm par pas, de -3 a +3 cm.
     sondes = impacts;
-    for p = 1:9
+    for p = 1:size(impacts, 1)
         pas_profil_impact = pas_profil;
         % Sur le cercle, les impacts 4 et 6 ont besoin d'un profil plus long
         % selon x pour chercher les deux passages a mi-hauteur.
         % A j = 30, les points supplementaires restent dans le cercle.
-        if forme == 1 && (p == 4 || p == 6)
+        if forme.index == 1 && (p == 4 || p == 6)
             pas_profil_impact = -10:10;  % +/- 5 cm, tous les 0,5 cm.
         end
         sondes = [sondes; ...
@@ -156,10 +212,12 @@ for forme = formes_a_tester
             [repmat(impacts(p,1),numel(pas_profil_impact),1), impacts(p,2)+pas_profil_impact(:)]]; %#ok<AGROW>
     end
     sondes = unique(sondes,'rows');
-    if any(sondes(:,1)<1 | sondes(:,1)>Nx | sondes(:,2)<1 | sondes(:,2)>Ny) ...
+    %Détection sondes hors bornes ou dans l'air
+    if any(sondes(:,1)<1| sondes(:,2)<1 | sondes(:,1)>Nx | sondes(:,2)>Ny) ...
             || any(~matiere(sub2ind([Nx Ny],sondes(:,1),sondes(:,2))))
-        error('Forme %d : un impact ou une sonde auxiliaire est dans l''air.',forme)
+        error('Forme %s : un impact ou une sonde auxiliaire est dans l''air.',nom_forme)
     end
+    % Identifies sur la carte la position des sondes
     sensor.mask = false(Nx,Ny);
     sensor.mask(sub2ind([Nx Ny],sondes(:,1),sondes(:,2))) = true;
     [sensorI,sensorJ] = ind2sub([Nx Ny],find(sensor.mask));
@@ -168,47 +226,49 @@ for forme = formes_a_tester
     assert(all(ok),'Impossible d''associer les 9 impacts aux signaux.')
 
     %% Source definition
-    % Un seul emetteur fixe. Les 9 points sont les emplacements testes.
-    sourceGrid = [62 9];
+    % Un seul émetteur fixe. Les 9 points sont les emplacements testes.
+    source_pos_x = 62; % TODO Implémenter l'ajout de plusieurs sources différentes
+    source_pos_y = 9;
     source_radius = 2;
     source_magnitude = 10;
     source.p0 = source_magnitude * makeDisc(Nx,Ny, ...
-        sourceGrid(1),sourceGrid(2),source_radius);
+        source_pos_x,source_pos_y,source_radius);
     if any(~matiere(source.p0>0))
-        error('Forme %d : le disque de la source touche l''air.',forme)
+        error('Forme %s : le disque de la source touche l''air.',nom_forme)
     end
 
     %% Visualisation de la grille de simulation
-    figure('Name',noms_formes{forme},'Color','w');
+    figure('Name',nom_forme,'Color','w');
     imagesc(kgrid.y_vec*1e3,kgrid.x_vec*1e3,medium.sound_speed)
     axis image; colorbar; hold on
     h1 = plot(kgrid.y_vec(impacts(:,2))*1e3, ...
         kgrid.x_vec(impacts(:,1))*1e3,'b+','MarkerSize',10,'LineWidth',1.3);
-    h2 = plot(kgrid.y_vec(sourceGrid(2))*1e3, ...
-        kgrid.x_vec(sourceGrid(1))*1e3,'ro','MarkerFaceColor','r');
+    h2 = plot(kgrid.y_vec(source_pos_y)*1e3, ...
+        kgrid.x_vec(source_pos_x)*1e3,'ro','MarkerFaceColor','r');
     for p = 1:9
         text(kgrid.y_vec(impacts(p,2))*1e3+4, ...
             kgrid.x_vec(impacts(p,1))*1e3,num2str(p),'Color','k');
     end
-    title(noms_formes{forme})
+    
+    title(nom_forme)
     xlabel('Position y [mm]'); ylabel('Position x [mm]')
-    legend([h1 h2],{'Impacts 1 a 9','Emetteur fixe'},'Location','best')
+    legend([h1 h2],{'Impacts 1 a 9','Émetteur fixe'},'Location','best')
     drawnow
-    if seulement_geometrie
-        fprintf('Forme %d : geometrie affichee; simulation ignoree.\n',forme)
+    if ~calcul_simulation
+        fprintf('Forme %s : geometrie affichée; simulation ignorée.\n',nom_forme)
         continue
     end
 
     %% Simulation
-    fprintf('Simulation %d/6 : %s (%d sondes virtuelles)\n', ...
-        forme,noms_formes{forme},size(positions_sondes,1))
+    fprintf('Simulation %s (%d sondes virtuelles)\n', ...
+        nom_forme,size(positions_sondes,1))
     sensor_data = kspaceFirstOrder2D(kgrid,medium,source,sensor, ...
         'PMLSize',2,'PMLInside',false,'DataCast','single','PlotSim',false);
 
     %% Sauvegarde des donnees
-    nom_fichier = sprintf('Sim_9_impacts_forme_%d.mat',forme);
+    nom_fichier = sprintf('Sim_9_impacts_forme_%d.mat',nom_forme);
     save(nom_fichier,'sensor_data','positions_sondes','impacts', ...
-        'indices_impacts','dx','dy','SoundSpeed','Density','forme','noms_formes', ...
+        'indices_impacts','dx','dy','materiau','forme','formes_basique', ...
         'cercle','rectangle','trapeze','palette','forme_D','piano')
     fprintf('Enregistre : %s\n',nom_fichier)
 end

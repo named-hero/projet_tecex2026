@@ -5,7 +5,11 @@ clear; clc; close all
 
 %Tableau des formes
 formes_custom_plaques = {
+<<<<<<< HEAD
+    "Formes enregistrer\eye.mat","Formes enregistrer\tache trou.mat"
+=======
     "Formes enregistrer\eye.mat","Formes enregistrer\peinture-v1"
+>>>>>>> 3b944c02c9950014353d251632486cfcaf82a549
 };
 formes_basique = {'Cercle','Rectangle','Trapeze trou et deux coupes', 'Forme en D'};
 impacts_formes_basique = {
@@ -48,7 +52,7 @@ materiaux(3)=struct( ...
 
 % basique : Fait référence au forme personnalisé
 % index : L'index dans le tableau
-formes_a_tester(1) = struct('index', 3, 'basique', true);
+formes_a_tester(1) = struct('index', 2, 'basique', false);
 materiau = materiaux(1);
 
 calcul_simulation = false;  % Compute simulation

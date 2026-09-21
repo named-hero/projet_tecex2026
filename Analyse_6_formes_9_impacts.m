@@ -30,6 +30,7 @@ end
 assert(~isempty(which('resolution_contraste')), ...
     'Placez resolution_contraste.m dans le meme dossier que ce fichier.');
 
+<<<<<<< HEAD
 resumes = [];
 noms_resultats = {};
 materiaux = {};
@@ -37,11 +38,16 @@ details_tout = {};
 
 for numero = 1:numel(fichiers)
     nom_fichier = char(fichiers{numero});
+=======
+for forme = formes_a_analyser % Analyse toutes les formes. Pas vraiment un choix
+    nom_fichier = sprintf('Sim_9_impacts_forme_%d.mat',forme);
+>>>>>>> 3b944c02c9950014353d251632486cfcaf82a549
     if ~isfile(nom_fichier)
         fprintf('Fichier absent, analyse ignoree : %s\n',nom_fichier);
         continue
     end
     S = load(nom_fichier);
+<<<<<<< HEAD
     st = resolution_contraste(S);
     n = st.n_impacts;
     n_cols = ceil(sqrt(n));
@@ -51,6 +57,57 @@ for numero = 1:numel(fichiers)
         'Position',[80 80 1550 1100]);
     disposition_profils = tiledlayout(n_rows,n_cols,'TileSpacing','loose','Padding','loose');
     for p = 1:n
+=======
+    assert(isfield(S,'positions_sondes') && isfield(S,'indices_impacts') ...
+        && size(S.impacts,1)==9 && size(S.sensor_data,1)==size(S.positions_sondes,1), ...
+        'Fichier incompatible : relancer Simulation_6_formes_9_impacts.m')
+    signaux = double(S.sensor_data);
+    energies = sqrt(sum(signaux.^2,2));
+    if any(energies <= 0)
+        error('Forme %d : au moins un signal est nul.',forme)
+    end
+    norm_signaux = signaux ./ energies;
+    I = S.impacts(:,1); % Prennds la liste des impacts
+    J = S.impacts(:,2);
+    res_x = NaN(9,1); % Erreur si plus que 9 points
+    res_y = NaN(9,1); % Erreur si plus que 9 points
+    contraste = NaN(9,1); % Erreur si plus que 9 points
+    confusion_max = NaN(9,1); % Erreur si plus que 9 points
+    couleurs = zeros(9,9); % Erreur si plus que 9 points
+
+    figure('Name',[noms{forme} ' - profils'],'Color','w', ...
+        'Position',[80 80 1500 1050]); % Pas sûr ce que fait Position - Olivier
+    disposition_profils = tiledlayout(3,3,'TileSpacing','loose','Padding','loose');
+    for p = 1:9 % Dépend encore une fois d'un nombre d'impact - Olivier
+        ref = S.indices_impacts(p);
+        % Meme definition que les anciens codes : maximum de la
+        % correlation croisee normalisee, sur tous les decalages temporels.
+        coeff = zeros(size(signaux,1),1);
+        for q = 1:size(signaux,1)
+            c = xcorr(norm_signaux(ref,:),norm_signaux(q,:));
+            coeff(q) = max(abs(c));
+        end
+        couleurs(p,:) = coeff(S.indices_impacts); %N'est pas à jour selon nouvelles méthode
+        autres = 1:9;
+        autres(p) = [];
+        contraste(p) = 1/mean(couleurs(p,autres));
+        confusion_max(p) = max(couleurs(p,autres));
+
+        etendue_profil = 6;
+        if forme == 1 && (p == 4 || p == 6)
+            etendue_profil = 10;  % Correspond aux nouvelles sondes du cercle.
+        end
+        masque_x = S.positions_sondes(:,2)==J(p) ...
+            & abs(S.positions_sondes(:,1)-I(p))<=etendue_profil;
+        masque_y = S.positions_sondes(:,1)==I(p) ...
+            & abs(S.positions_sondes(:,2)-J(p))<=etendue_profil;
+        [absc_x,ordre_x] = sort((S.positions_sondes(masque_x,1)-I(p))*S.dx*100);
+        [absc_y,ordre_y] = sort((S.positions_sondes(masque_y,2)-J(p))*S.dy*100);
+        courbe_x = coeff(masque_x); courbe_x = courbe_x(ordre_x);
+        courbe_y = coeff(masque_y); courbe_y = courbe_y(ordre_y);
+        res_x(p) = largeur_mi_hauteur(absc_x,courbe_x);
+        res_y(p) = largeur_mi_hauteur(absc_y,courbe_y);
+>>>>>>> 3b944c02c9950014353d251632486cfcaf82a549
         ax = nexttile(disposition_profils);
         plot(ax,st.absc_x{p},st.courbe_x{p},'-','LineWidth',2,'Color',[0.10 0.35 0.70]);
         hold(ax,'on');

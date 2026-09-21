@@ -3,10 +3,7 @@ function comparaison=Tableau_comparaison(fichiers)
 % Aucune simulation ni nouveau calcul des correlations.
 % Sans argument : selectionner les analyses avec Ctrl+clic.
 if nargin<1 || isempty(fichiers)
-    depart=fullfile(fileparts(mfilename('fullpath')),'resultats_simulation','analyses');
-    if ~isfolder(depart), depart=pwd; end
-    [f,d]=uigetfile({'*.mat','Analyses MATLAB (*.mat)'}, ...
-        'Choisir les fichiers Analyse_...mat',fullfile(depart,'*.mat'),'MultiSelect','on');
+    [f,d]=uigetfile('Analyse_*.mat','Choisir les ANALYSES a comparer','MultiSelect','on');
     if isequal(f,0), comparaison=table(); return; end
     if ischar(f), f={f}; end
     fichiers=cellfun(@(x)fullfile(d,x),f,'UniformOutput',false);
@@ -14,12 +11,6 @@ end
 if ischar(fichiers)||isstring(fichiers), fichiers=cellstr(fichiers); end
 comparaison=table();
 for k=1:numel(fichiers)
-    [~,~,extension]=fileparts(fichiers{k});
-    assert(strcmpi(extension,'.mat'), ...
-        'Selectionnez le fichier Analyse_...mat, pas le CSV : %s',fichiers{k});
-    contenu=whos('-file',fichiers{k});
-    assert(any(strcmp({contenu.name},'stats')), ...
-        'Ce fichier ne contient pas une analyse. Choisissez Analyse_...mat dans le dossier analyses : %s',fichiers{k});
     A=load(fichiers{k},'stats');
     assert(isfield(A,'stats') && isfield(A.stats,'methode'), ...
         'Choisir une analyse creee par Analyser_simulation.m : %s',fichiers{k});

@@ -1,12 +1,16 @@
 %% Installation
 % Ajouter k-Wave au chemin MATLAB avant de lancer ce script.
-
+%Commentaire  test synchroniastion 
 %% Initialisation variables
 clear; clc; close all
 
 %Tableau des formes
 formes_custom_plaques = {
+<<<<<<< HEAD
     "Formes enregistrer\eye.mat","Formes enregistrer\tache trou.mat"
+=======
+    "Formes enregistrer\eye.mat","Formes enregistrer\peinture-v1"
+>>>>>>> 3b944c02c9950014353d251632486cfcaf82a549
 };
 formes_basique = {'Cercle','Rectangle','Trapeze trou et deux coupes', 'Forme en D'};
 impacts_formes_basique = {

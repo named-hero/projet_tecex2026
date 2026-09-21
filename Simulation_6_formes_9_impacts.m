@@ -4,7 +4,7 @@
 %% Clear
 clear; clc; close all
 
-formes_a_tester = 3;  % 1=cercle, 2=rectangle, 3=trapeze, 4=palette, 5=D, 6=piano.
+formes_a_tester = 1:6;  % 1=cercle, 2=rectangle, 3=trapeze, 4=palette, 5=D, 6=piano.
 seulement_geometrie = false;  % true = voir les formes sans calcul k-Wave.
 noms_formes = {'Cercle','Rectangle','Trapeze trou et deux coupes', ...
     'Palette de peintre','Forme en D','Contour de piano'};

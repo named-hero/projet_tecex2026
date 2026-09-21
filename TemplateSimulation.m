@@ -9,7 +9,7 @@
 %% Clear
 clear all; clc
 
-formes_a_tester = 4;
+formes_a_tester = 7;
 
 % 1 = rectangle
 % 2 = trapeze
@@ -24,11 +24,12 @@ noms_formes = { ...
     'Trapeze avec deux coupes', ...
     'Trapeze avec un trou', ...
     'Trapeze avec coupes et trou', ...
-    'Polygone tres irregulier'};
+    'Polygone tres irregulier', ...
+    'Personalisé'};
 
 %% Simulation grid parameter
 Nx = 124;               % number of grid points in the x (row) direction
-Ny = 60;               % number of grid points in the y (column) direction
+Ny = 124;               % number of grid points in the y (column) direction
 dx = 5e-3;            % grid points spacing in the x direction [m]
 dy = 5e-3;            % grid points spacing in the y direction [m]
 
@@ -283,6 +284,48 @@ centre_trou_j = 30;
             end
         end
 
+    case 7
+        %% FORME 7 : Forme personnalisée
+
+        liste = dir(fullfile("projet_tecex2026", "Formes enregistrer"));
+        noms = {liste.name};
+        
+        % Sélection de la forme personnalisée à charger
+        formes = liste(~[liste.isdir] & endsWith({liste.name}, '.mat'));
+        if isempty(formes)
+            error('Aucun fichier MAT trouvé dans le dossier des formes.');
+        end
+        for i=1:size(formes, 1)
+            disp(string(i) + ". " + formes(i).name);
+        end
+        nombre = input("\nEntrez le nombre correspondant au fichier : ");
+        if ~isscalar(nombre) || ~isnumeric(nombre) || nombre < 1 || ...
+                nombre > numel(formes) || nombre ~= floor(nombre)
+            error('Sélection de fichier invalide.');
+        end
+        nom_forme = string(formes(nombre).name(1:end - 4));
+        S = load("projet_tecex2026\Formes enregistrer\" + formes(nombre).name);
+        shape = S.shape;
+
+        if ndims(shape) == 3
+            shape = shape(:,:,1);
+        end
+
+        shape = shape > 0;   % masque binaire
+
+        marge = 4;           % air ajouté en haut, bas, gauche, droite
+        shapePad = false(size(shape,1) + 2*marge, size(shape,2) + 2*marge);
+        shapePad(marge+1:end-marge, marge+1:end-marge) = shape;
+
+
+        [Nx, Ny] = size(shapePad);
+        medium.sound_speed = airSpeed * ones(Nx, Ny);
+        medium.density = airDensity * ones(Nx, Ny);
+
+        medium.sound_speed(shapePad) = SoundSpeed;
+        medium.density(shapePad) = Density;
+
+        kgrid = kWaveGrid(Nx, dx, Ny, dy);
 end
 
 %% Define sensor
@@ -292,7 +335,7 @@ end
 
 clear sensor
 
-impactXGrid = 20:2:104;     % [gridPoint]
+impactXGrid = 20:2:50;     % [gridPoint]
 impactYGrid = 12;     % [gridPoint]
 
 % On transforme les points de la grille de simulation en position
@@ -311,12 +354,12 @@ end
 % du bord.
 
 clear source
-
+ 
 sourceGrid = [45, 35];
 source_radius = floor(0.01/dx);         % [grid points] (Taille d'un doigt)
 source_magnitude = 10;                  % [Pa]
 source_1 = source_magnitude*makeDisc(Nx, Ny, sourceGrid(1), sourceGrid(2), source_radius);
-
+ 
 source.p0 = source_1;
 
 % Verification des positions d'impact
@@ -378,9 +421,13 @@ drawnow
 % Sauvegarder les données pour les réutiliser plus tard, où pour les
 % exporter vers python. Pour load dans python, utiliser scipy.io.loadmat()
 
-nom_fichier = sprintf('Sim_forme_%d.mat', forme);
+if forme == 7
+    nom_fichier = sprintf('projet_tecex2026\Sim_forme_%s.mat', nom_forme);
+else
+    nom_fichier = sprintf('projet_tecex2026\Sim_forme_%d.mat', forme);
+end
 save(nom_fichier, 'sensor_data', 'impactXGrid', ...
-    'impactYGrid', 'forme', 'sourceGrid')
+        'impactYGrid', 'forme', 'sourceGrid')
 
 end
 

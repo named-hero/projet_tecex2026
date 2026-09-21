@@ -12,19 +12,20 @@ formes_custom_plaques = {'',''}; % Vide : choix du PNG dans une fenetre.
 % Exemple pour trois dessins : {'palette.png','forme_D.png','piano.png'};
 png_matiere_sombre = false; % false pour une silhouette blanche sur fond noir.
 png_seuil = 0.5;           % Seuil de luminosite entre 0 et 1.
-formes_basique = {'Cercle','Rectangle','Trapeze trou et deux coupes'};
+formes_basique = {'Cercle','Rectangle','Trapeze trou et deux coupes','Forme en D'};
 impacts_formes_basique = {
     [46 19; 46 30; 46 41;
     62 19; 62 30; 62 41;
     78 19; 78 30; 78 41];
-
     [20 18; 20 30; 20 42;
     62 18; 62 30; 62 42;
     104 18; 104 30; 104 42];
-
     [29 15; 29 27; 29 39;
     62 15; 62 27; 62 39;
     95 15; 95 27; 95 39];
+    [39 17; 39 29; 39 40;   
+    58 17; 58 29; 58 40;
+    95 17; 95 29; 95 40];
     };
 
 % Nombre d'impacts par defaut pour une forme PNG (clics).
@@ -35,13 +36,14 @@ impacts_formes_basique = {
 nb_impacts_png = 9;
 
 % PARAMETRES A MODIFIER
-indices_formes = 1:5; % Trois formes classiques + un dessin PNG.
+indices_formes = 1:6; % Trois formes classiques + un dessin PNG.
 % Mettre 4 pour le PNG seul, ou 1:3 pour les trois formes classiques.
-assert(all(ismember(indices_formes,1:(3+numel(formes_custom_plaques)))), ...
+assert(all(ismember(indices_formes,1:(4+numel(formes_custom_plaques)))), ...
     'Ajoutez les chemins PNG dans formes_custom_plaques pour ces indices.');
+
 formes_a_tester = struct('index',{},'basique',{});
-for n=indices_formes
-    formes_a_tester(end+1)=struct('index',n,'basique',n<=3); %#ok<SAGROW>
+for n = indices_formes
+    formes_a_tester(end+1) = struct('index', n, 'basique', n <= 4); %#ok<SAGROW>
 end
 
 % Valeurs provisoires du template : a remplacer par acier / aluminium / plastique.
@@ -104,7 +106,7 @@ for forme = formes_a_tester
     if forme.basique
         nom_forme = formes_basique{forme.index};
     else
-        pathStr = formes_custom_plaques{forme.index-3};
+        pathStr = formes_custom_plaques{forme.index-4};
         if isempty(pathStr)
             [nom_png,dossier_png]=uigetfile('*.png','Choisir une silhouette PNG');
             if isequal(nom_png,0), error('Selection du PNG annulee.'); end
@@ -154,6 +156,11 @@ for forme = formes_a_tester
                 matiere = I>=trapeze.i_min & I<=trapeze.i_max ...
                     & J>=trapeze.j_min & J<=bord_incline ...
                     & ~coupe_1 & ~coupe_2 & ~trou;
+             case 4  % D : cote plat a gauche, cote bombe a droite
+                forme_D = D_shape(Nx/2);
+                matiere = J>=forme_D.bord_plat_j ...
+                    & ((I-forme_D.centre_i)/forme_D.rayon_i).^2 ...
+                    + ((J-forme_D.bord_plat_j)/forme_D.rayon_arrondi_j).^2 <= 1;
         end
         matiere = matiere & bordure;
         medium.sound_speed(matiere) = materiau.sound_speed;
@@ -282,6 +289,11 @@ function trapeze = Trapeze()
     trapeze.coupe_1_i = 24; trapeze.coupe_1_j = 12;
     trapeze.coupe_2_i = 18; trapeze.coupe_2_j = 8;
     trapeze.trou_i = 108; trapeze.trou_j = 18; trapeze.rayon_trou = 4;
+end
+
+function forme_D = D_shape(x)
+    forme_D.centre_i = x; forme_D.rayon_i = 58; 
+    forme_D.bord_plat_j = 4; forme_D.rayon_arrondi_j = 52;
 end
 
 function fig = afficherGeometrie(kgrid,carte,impacts,si,sj,nom)

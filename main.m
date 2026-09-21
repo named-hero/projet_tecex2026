@@ -1,6 +1,6 @@
 %% Installation
 % Ajouter k-Wave au chemin MATLAB avant de lancer ce script.
-
+%Commentaire  test synchroniastion 
 %% Initialisation variables
 clear; clc; close all
 

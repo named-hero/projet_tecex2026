@@ -6,7 +6,7 @@ clear; clc; close all
 
 %Tableau des formes
 formes_custom_plaques = {
-    "projet_tecex2026\Formes enregistrer\eye.mat"
+    "Formes enregistrer\eye.mat","Formes enregistrer\peinture-v1"
 };
 formes_basique = {'Cercle','Rectangle','Trapeze trou et deux coupes', 'Forme en D'};
 impacts_formes_basique = {

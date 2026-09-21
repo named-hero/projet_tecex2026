@@ -6,7 +6,7 @@ resumes = NaN(6,10);
 noms = {'Cercle','Rectangle','Trapeze trou et deux coupes', ...
         'Palette de peintre','Forme en D','Contour de piano'};
 
-for forme = formes_a_analyser
+for forme = formes_a_analyser % Analyse toutes les formes. Pas vraiment un choix
     nom_fichier = sprintf('Sim_9_impacts_forme_%d.mat',forme);
     if ~isfile(nom_fichier)
         fprintf('Forme %d : fichier absent, analyse ignoree.\n',forme)
@@ -22,18 +22,18 @@ for forme = formes_a_analyser
         error('Forme %d : au moins un signal est nul.',forme)
     end
     norm_signaux = signaux ./ energies;
-    I = S.impacts(:,1);
+    I = S.impacts(:,1); % Prennds la liste des impacts
     J = S.impacts(:,2);
-    res_x = NaN(9,1);
-    res_y = NaN(9,1);
-    contraste = NaN(9,1);
-    confusion_max = NaN(9,1);
-    couleurs = zeros(9,9);
+    res_x = NaN(9,1); % Erreur si plus que 9 points
+    res_y = NaN(9,1); % Erreur si plus que 9 points
+    contraste = NaN(9,1); % Erreur si plus que 9 points
+    confusion_max = NaN(9,1); % Erreur si plus que 9 points
+    couleurs = zeros(9,9); % Erreur si plus que 9 points
 
     figure('Name',[noms{forme} ' - profils'],'Color','w', ...
-        'Position',[80 80 1500 1050]);
+        'Position',[80 80 1500 1050]); % Pas sûr ce que fait Position - Olivier
     disposition_profils = tiledlayout(3,3,'TileSpacing','loose','Padding','loose');
-    for p = 1:9
+    for p = 1:9 % Dépend encore une fois d'un nombre d'impact - Olivier
         ref = S.indices_impacts(p);
         % Meme definition que les anciens codes : maximum de la
         % correlation croisee normalisee, sur tous les decalages temporels.
@@ -42,7 +42,7 @@ for forme = formes_a_analyser
             c = xcorr(norm_signaux(ref,:),norm_signaux(q,:));
             coeff(q) = max(abs(c));
         end
-        couleurs(p,:) = coeff(S.indices_impacts);
+        couleurs(p,:) = coeff(S.indices_impacts); %N'est pas à jour selon nouvelles méthode
         autres = 1:9;
         autres(p) = [];
         contraste(p) = 1/mean(couleurs(p,autres));

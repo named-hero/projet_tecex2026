@@ -37,6 +37,6 @@ shape = croppedPixels;
 nom = inputdlg("Quelle est le nom de la forme");
 
 %Enregistrer le fichier image initial pour backlog
-copyfile(file_location, append("projet_tecex2026\Formes (png)\", nom, ".png"))
+copyfile(file_location, append("Formes (png)\", nom, ".png"))
 %Enregistrer nouveau fichier dans variable <shape>
-save(append("projet_tecex2026\Formes enregistrer\", nom), "shape")
+save(append("Formes enregistrer\", nom), "shape")

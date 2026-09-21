@@ -1,176 +1,170 @@
-clear; clc; close all
+function synthese = Analyse_6_formes_9_impacts(selection)
+%ANALYSE_6_FORMES_9_IMPACTS  Profils, cartes et stats a partir de main2.m.
+%
+%   synthese = Analyse_6_formes_9_impacts()
+%   synthese = Analyse_6_formes_9_impacts(3)
+%   synthese = Analyse_6_formes_9_impacts(fichiers_generes)
 
-formes_a_analyser = 3;  % Analyse tous les fichiers deja simules.
-% Colonnes : Rx moy/min/max, Ry moy/min/max, C moy/min/max, autre max.
-resumes = NaN(6,10);
-noms = {'Cercle','Rectangle','Trapeze trou et deux coupes', ...
-        'Palette de peintre','Forme en D','Contour de piano'};
+dossier_code = fileparts(mfilename('fullpath'));
+addpath(dossier_code);
+dossier_resultats = fullfile(dossier_code,'resultats_simulation');
+if nargin < 1
+    liste = listerFichiersSim(dossier_resultats);
+    selection = arrayfun(@(f) fullfile(f.folder,f.name),liste,'UniformOutput',false);
+end
+if isnumeric(selection)
+    validateattributes(selection,{'numeric'},{'vector','integer','>=',1});
+    fichiers = {};
+    for n = selection(:).'
+        motif = fullfile(dossier_resultats,sprintf('Sim_*_impacts_forme_%d*.mat',n));
+        liste = dir(motif);
+        fichiers = [fichiers; arrayfun(@(f) fullfile(f.folder,f.name),liste,'UniformOutput',false)]; %#ok<AGROW>
+    end
+elseif iscell(selection)
+    fichiers = selection;
+elseif ischar(selection) || isstring(selection)
+    fichiers = cellstr(selection);
+else
+    error('Selection attendue : numeros de formes ou chemins de fichiers.');
+end
+assert(~isempty(which('resolution_contraste')), ...
+    'Placez resolution_contraste.m dans le meme dossier que ce fichier.');
 
-for forme = formes_a_analyser
-    nom_fichier = sprintf('Sim_9_impacts_forme_%d.mat',forme);
+resumes = [];
+noms_resultats = {};
+materiaux = {};
+details_tout = {};
+
+for numero = 1:numel(fichiers)
+    nom_fichier = char(fichiers{numero});
     if ~isfile(nom_fichier)
-        fprintf('Forme %d : fichier absent, analyse ignoree.\n',forme)
+        fprintf('Fichier absent, analyse ignoree : %s\n',nom_fichier);
         continue
     end
     S = load(nom_fichier);
-    assert(isfield(S,'positions_sondes') && isfield(S,'indices_impacts') ...
-        && size(S.impacts,1)==9 && size(S.sensor_data,1)==size(S.positions_sondes,1), ...
-        'Fichier incompatible : relancer Simulation_6_formes_9_impacts.m')
-    signaux = double(S.sensor_data);
-    energies = sqrt(sum(signaux.^2,2));
-    if any(energies <= 0)
-        error('Forme %d : au moins un signal est nul.',forme)
-    end
-    norm_signaux = signaux ./ energies;
-    I = S.impacts(:,1);
-    J = S.impacts(:,2);
-    res_x = NaN(9,1);
-    res_y = NaN(9,1);
-    contraste = NaN(9,1);
-    confusion_max = NaN(9,1);
-    couleurs = zeros(9,9);
+    st = resolution_contraste(S);
+    n = st.n_impacts;
+    n_cols = ceil(sqrt(n));
+    n_rows = ceil(n/n_cols);
 
-    figure('Name',[noms{forme} ' - profils'],'Color','w', ...
-        'Position',[80 80 1500 1050]);
-    disposition_profils = tiledlayout(3,3,'TileSpacing','loose','Padding','loose');
-    for p = 1:9
-        ref = S.indices_impacts(p);
-        % Meme definition que les anciens codes : maximum de la
-        % correlation croisee normalisee, sur tous les decalages temporels.
-        coeff = zeros(size(signaux,1),1);
-        for q = 1:size(signaux,1)
-            c = xcorr(norm_signaux(ref,:),norm_signaux(q,:));
-            coeff(q) = max(abs(c));
-        end
-        couleurs(p,:) = coeff(S.indices_impacts);
-        autres = 1:9;
-        autres(p) = [];
-        contraste(p) = 1/mean(couleurs(p,autres));
-        confusion_max(p) = max(couleurs(p,autres));
-
-        etendue_profil = 6;
-        if forme == 1 && (p == 4 || p == 6)
-            etendue_profil = 10;  % Correspond aux nouvelles sondes du cercle.
-        end
-        masque_x = S.positions_sondes(:,2)==J(p) ...
-            & abs(S.positions_sondes(:,1)-I(p))<=etendue_profil;
-        masque_y = S.positions_sondes(:,1)==I(p) ...
-            & abs(S.positions_sondes(:,2)-J(p))<=etendue_profil;
-        [absc_x,ordre_x] = sort((S.positions_sondes(masque_x,1)-I(p))*S.dx*100);
-        [absc_y,ordre_y] = sort((S.positions_sondes(masque_y,2)-J(p))*S.dy*100);
-        courbe_x = coeff(masque_x); courbe_x = courbe_x(ordre_x);
-        courbe_y = coeff(masque_y); courbe_y = courbe_y(ordre_y);
-        res_x(p) = largeur_mi_hauteur(absc_x,courbe_x);
-        res_y(p) = largeur_mi_hauteur(absc_y,courbe_y);
+    figure('Name',[st.nom_forme ' - profils'],'Color','w', ...
+        'Position',[80 80 1550 1100]);
+    disposition_profils = tiledlayout(n_rows,n_cols,'TileSpacing','loose','Padding','loose');
+    for p = 1:n
         ax = nexttile(disposition_profils);
-        plot(ax,absc_x,courbe_x,'-','LineWidth',2,'Color',[0.10 0.35 0.70]);hold(ax,'on')
-        plot(ax,absc_y,courbe_y,'-','LineWidth',2,'Color',[0.85 0.35 0.10])
-        yline(ax,0.5,'--','Color',[0.4 0.4 0.4]);
-        xline(ax,0,':','Color',[0.5 0.5 0.5]);grid(ax,'on')
-        if p>=7, xlabel(ax,'Deplacement [cm]'); end
-        if mod(p-1,3)==0, ylabel(ax,'Correlation maximale'); end
-        title(sprintf('Impact %d | Rx %.2f cm | Ry %.2f cm',p,res_x(p),res_y(p)))
-        xlim([-etendue_profil*S.dx*100 etendue_profil*S.dx*100]);ylim([0 1.05])
+        plot(ax,st.absc_x{p},st.courbe_x{p},'-','LineWidth',2,'Color',[0.10 0.35 0.70]);
+        hold(ax,'on');
+        plot(ax,st.absc_y{p},st.courbe_y{p},'-','LineWidth',2,'Color',[0.85 0.35 0.10]);
+        if isfinite(st.seuil_x(p)), yline(ax,st.seuil_x(p),'--','Color',[0.4 0.4 0.4]); end
+        xline(ax,0,':','Color',[0.5 0.5 0.5]);
+        grid(ax,'on');
+        if p > n-n_cols, xlabel(ax,'Deplacement [cm]'); end
+        if mod(p-1,n_cols)==0, ylabel(ax,'Correlation maximale'); end
+        title(ax,{sprintf('Impact %d',p), ...
+            sprintf('Rx = %.2f cm | Ry = %.2f cm',st.Rx(p),st.Ry(p))},'FontSize',11);
+        if ~isempty(st.absc_x{p})
+            limite = max([abs(st.absc_x{p}); abs(st.absc_y{p}); 1]);
+            xlim(ax,[-limite limite]);
+        end
+        ylim(ax,[0 1.05]);
+        set(ax,'FontSize',10);
     end
-    title(disposition_profils,{[noms{forme} ' : profils locaux de correlation'], ...
-        'Bleu : direction x   |   Orange : direction y   |   Tirets : mi-hauteur (0,5)   |   Pointilles : impact de reference'})
+    title(disposition_profils,{[st.nom_forme ' / ' st.materiau ' : profils de correlation'], ...
+        sprintf('N = %d impacts   |   Bleu : x   |   Orange : y   |   Tirets : mi-hauteur',n)});
 
-    figure('Name',[noms{forme} ' - grille'],'Color','w', ...
+    figure('Name',[st.nom_forme ' - grille'],'Color','w', ...
         'Position',[100 100 1500 1050]);
-    disposition_carte = tiledlayout(3,3,'TileSpacing','loose','Padding','loose');
-    % Une echelle commune met en evidence les differences entre les autres
-    % impacts. Le point de reference est exclu : sa correlation vaut 1.
-    echelle_max = min(1,max(0.1,ceil(10*max(confusion_max))/10));
+    disposition_carte = tiledlayout(n_rows,n_cols,'TileSpacing','loose','Padding','loose');
     y_cm = S.impacts(:,2)*S.dy*100;
     x_cm = S.impacts(:,1)*S.dx*100;
     marge_y = max(1,0.15*(max(y_cm)-min(y_cm)));
     marge_x = max(1,0.15*(max(x_cm)-min(x_cm)));
-    for p=1:9
+    for p = 1:n
         ax = nexttile(disposition_carte);
-        autres = setdiff(1:9,p);
-        scatter(ax,y_cm(autres),x_cm(autres),115,couleurs(p,autres), ...
+        autres = setdiff(1:n,p);
+        scatter(ax,y_cm(autres),x_cm(autres),115,st.couleurs(p,autres), ...
             'filled','MarkerEdgeColor','w','LineWidth',0.8);
-        hold(ax,'on')
+        hold(ax,'on');
         plot(ax,y_cm(p),x_cm(p),'o','MarkerSize',12, ...
-            'MarkerFaceColor','w','MarkerEdgeColor','k','LineWidth',2)
-        grid(ax,'on'); axis(ax,'equal')
-        xlim(ax,[min(y_cm)-marge_y max(y_cm)+marge_y])
-        ylim(ax,[min(x_cm)-marge_x max(x_cm)+marge_x])
-        set(ax,'YDir','reverse')
-        caxis(ax,[0 echelle_max])
-        if p>=7, xlabel(ax,'Position y [cm]'); end
-        if mod(p-1,3)==0, ylabel(ax,'Position x [cm]'); end
-        title(ax,sprintf('Impact %d  |  autre max : %.2f',p,confusion_max(p)))
+            'MarkerFaceColor','w','MarkerEdgeColor','k','LineWidth',2);
+        grid(ax,'on'); axis(ax,'equal');
+        xlim(ax,[min(y_cm)-marge_y max(y_cm)+marge_y]);
+        ylim(ax,[min(x_cm)-marge_x max(x_cm)+marge_x]);
+        set(ax,'YDir','reverse');
+        caxis(ax,[0 1]);
+        if p > n-n_cols, xlabel(ax,'Position y [cm]'); end
+        if mod(p-1,n_cols)==0, ylabel(ax,'Position x [cm]'); end
+        title(ax,{sprintf('Impact %d',p), ...
+            sprintf('Autre max : %.2f',st.confusion_max(p))},'FontSize',11);
+        set(ax,'FontSize',10);
     end
-    colormap(gcf,parula(256))
-    % L'echelle occupe sa propre zone sous les neuf cartes.
+    colormap(gcf,parula(256));
     barre = colorbar(ax,'southoutside');
     barre.Layout.Tile = 'south';
-    barre.Label.String = 'Ressemblance avec la reference (0 = faible, 1 = identique)';
-    title(disposition_carte,{[noms{forme} ' : ressemblance entre les 9 impacts'], ...
-        'Cercle blanc : reference   |   Cercles colores : huit autres impacts   |   Meme echelle pour les neuf cartes'})
+    barre.Label.String = 'Correlation maximale normalisee (0 a 1)';
+    title(disposition_carte,{sprintf('%s : ressemblance entre les %d impacts',st.nom_forme,n), ...
+        'Cercle blanc : reference   |   Echelle fixe de 0 a 1'});
 
-    fprintf('\n%s\n',noms{forme})
-    fprintf('Impact | R x [cm] | R y [cm] | Contraste grille | Autre max\n')
-    for p=1:9
-        fprintf('%6d | %8.2f | %8.2f | %14.2f | %9.2f\n', ...
-            p,res_x(p),res_y(p),contraste(p),confusion_max(p))
+    fprintf('\n%s  [%s]  (N = %d impacts)\n',st.nom_forme,st.materiau,n);
+    fprintf('Impact | R x [cm] | R y [cm] | C profil | C grille | Autre max\n');
+    for p = 1:n
+        fprintf('%6d | %8.2f | %8.2f | %8.2f | %8.2f | %9.2f\n', ...
+            p,st.Rx(p),st.Ry(p),st.contraste_profil(p), ...
+            st.contraste_grille(p),st.confusion_max(p));
     end
-    [contraste_min,impact_c_min] = min(contraste);
-    [contraste_max,impact_c_max] = max(contraste);
-    fprintf('Contraste moyen de grille : %.2f\n',mean(contraste))
-    fprintf('Contraste le plus faible : %.2f (impact %d)\n',contraste_min,impact_c_min)
-    fprintf('Contraste le plus eleve : %.2f (impact %d)\n',contraste_max,impact_c_max)
-    resumes(forme,7:10) = [mean(contraste),contraste_min, ...
-        contraste_max,max(confusion_max)];
-    if any(isnan(res_x))
-        fprintf('Rx indetermine pour les impacts : ')
-        fprintf('%d ',find(isnan(res_x)))
-        fprintf('\n')
-    else
-        [rx_min,impact_rx_min] = min(res_x);
-        [rx_max,impact_rx_max] = max(res_x);
-        resumes(forme,1:3) = [mean(res_x),rx_min,rx_max];
-        fprintf('Rx moyen : %.2f cm | meilleur : %.2f (impact %d) | pire : %.2f (impact %d)\n', ...
-            mean(res_x),rx_min,impact_rx_min,rx_max,impact_rx_max)
-    end
-    if any(isnan(res_y))
-        fprintf('Ry indetermine pour les impacts : ')
-        fprintf('%d ',find(isnan(res_y)))
-        fprintf('\n')
-    else
-        [ry_min,impact_ry_min] = min(res_y);
-        [ry_max,impact_ry_max] = max(res_y);
-        resumes(forme,4:6) = [mean(res_y),ry_min,ry_max];
-        fprintf('Ry moyen : %.2f cm | meilleur : %.2f (impact %d) | pire : %.2f (impact %d)\n', ...
-            mean(res_y),ry_min,impact_ry_min,ry_max,impact_ry_max)
-    end
-    fprintf('Pire ressemblance avec un autre impact : %.2f\n',resumes(forme,10))
+    afficherResume('Rx [cm]',st.agg.Rx);
+    afficherResume('Ry [cm]',st.agg.Ry);
+    afficherResume('Contraste profil',st.agg.contraste_profil);
+    afficherResume('Contraste grille',st.agg.contraste_grille);
+    fprintf('Pire ressemblance avec un autre impact : %.2f\n',max(st.confusion_max));
+
+    details = table((1:9)',st.Rx,st.Ry,st.contraste_profil,st.contraste_grille,st.confusion_max, ...
+        'VariableNames',{'Impact','Rx_cm','Ry_cm','Contraste_profil','Contraste_grille','Autre_max'});
+    [dossier_entree,base_entree] = fileparts(nom_fichier);
+    writetable(details,fullfile(dossier_entree,[base_entree '_analyse.csv']));
+    details_tout{end+1} = details; %#ok<AGROW>
+
+    noms_resultats{end+1} = st.nom_forme; %#ok<AGROW>
+    materiaux{end+1} = st.materiau; %#ok<AGROW>
+    resumes = [resumes; ...
+        st.agg.Rx.moy, st.agg.Rx.min, st.agg.Rx.max, st.agg.Rx.ecart_type, st.agg.Rx.incertitude, ...
+        st.agg.Ry.moy, st.agg.Ry.min, st.agg.Ry.max, st.agg.Ry.ecart_type, st.agg.Ry.incertitude, ...
+        st.agg.contraste_profil.moy, st.agg.contraste_profil.ecart_type, ...
+        st.agg.contraste_grille.moy, st.agg.contraste_grille.min, ...
+        st.agg.contraste_grille.max, max(st.confusion_max)]; %#ok<AGROW>
 end
 
-fprintf('\nSYNTHESE DES SIX FORMES\n')
-fprintf('Forme | Rx moy | Rx min | Rx max | Ry moy | Ry min | Ry max | C moy | C min | C max | autre max\n')
-for forme=formes_a_analyser
-    fprintf('%5d | %6.2f | %6.2f | %6.2f | %6.2f | %6.2f | %6.2f | %5.2f | %5.2f | %5.2f | %9.2f  %s\n', ...
-        forme,resumes(forme,:),noms{forme})
+if isempty(resumes)
+    synthese = table();
+    fprintf('Aucun fichier analyse.\n');
+    return
 end
-fprintf('\nRx et Ry [cm] = largeurs a mi-hauteur selon chaque direction.\n')
-fprintf('C = 1 / moyenne des correlations avec les huit autres impacts.\n')
-fprintf('Une petite R et une petite ressemblance maximale sont souhaitables.\n')
-fprintf('Cette simulation acoustique 2D ne modelise pas les ondes de flexion d''une vraie plaque.\n')
 
-function largeur = largeur_mi_hauteur(x,c)
-    largeur = NaN;
-    milieu = find(abs(x)<1e-10,1);
-    if isempty(milieu), return, end
-    gauche = find(c(1:milieu-1)<=0.5,1,'last');
-    droite_rel = find(c(milieu+1:end)<=0.5,1,'first');
-    if isempty(gauche) || isempty(droite_rel), return, end
-    droite = milieu + droite_rel;
-    if c(gauche+1)==c(gauche) || c(droite)==c(droite-1), return, end
-    xg = x(gauche)+(0.5-c(gauche))*(x(gauche+1)-x(gauche)) ...
-        /(c(gauche+1)-c(gauche));
-    xd = x(droite-1)+(0.5-c(droite-1))*(x(droite)-x(droite-1)) ...
-        /(c(droite)-c(droite-1));
-    largeur = xd-xg;
+synthese = array2table(resumes,'VariableNames', ...
+    {'Rx_moy_cm','Rx_min_cm','Rx_max_cm','Rx_std_cm','Rx_inc_cm', ...
+     'Ry_moy_cm','Ry_min_cm','Ry_max_cm','Ry_std_cm','Ry_inc_cm', ...
+     'Cp_moy','Cp_std','Cg_moy','Cg_min','Cg_max','Autre_max'});
+synthese = addvars(synthese,string(materiaux(:)), ...
+    'Before',1,'NewVariableNames','Materiau');
+synthese = addvars(synthese,string(noms_resultats(:)), ...
+    'Before',1,'NewVariableNames','Forme');
+fprintf('\nSYNTHESE DES FORMES ANALYSEES (moy +/- incertitude type)\n');
+disp(synthese);
+fprintf('Rx et Ry : largeur a mi-hauteur depuis la ligne de base (manuel 3.5).\n');
+fprintf('Petits Rx et Ry souhaitables ; pas une separation garantie entre notes.\n');
+fprintf('Cp = Cmax / ligne de base. Cg = 1 / moyenne des 8 autres impacts.\n');
+fprintf('std : dispersion entre les 9 impacts. inc = std/sqrt(N).\n');
+fprintf('Simulation acoustique 2D : ne modelise pas la flexion d une vraie plaque.\n');
+if ~isfolder(dossier_resultats), mkdir(dossier_resultats); end
+writetable(synthese,fullfile(dossier_resultats,'Synthese_formes.csv'));
+end
+
+function afficherResume(nom,agg)
+if ~isfinite(agg.moy)
+    fprintf('%s : indetermine (aucun pic mesurable).\n',nom);
+    return
+end
+fprintf(['%s : moyenne %.2f +/- %.2f (std %.2f) | min %.2f | max %.2f ' ...
+    '| N = %d/%d\n'],nom,agg.moy,agg.incertitude,agg.ecart_type, ...
+    agg.min,agg.max,agg.n_valides,agg.n_total);
 end

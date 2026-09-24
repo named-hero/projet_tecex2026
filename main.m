@@ -6,7 +6,7 @@ clear; clc; close all
 %Tableau des formes
 formes_custom_plaques = {"Formes enregistrer\eye.mat","Formes enregistrer\peinture-v1"};
 formes_basique = {'Cercle','Rectangle','Trapeze trou et deux coupes', 'Forme en D'};
-impacts_formes_custom = {[]};
+impacts_formes_custom = {};
 impacts_formes_basique = {
     [46 19; 46 30; 46 41;
     62 19; 62 30; 62 41;
@@ -112,44 +112,44 @@ function piano = Piano()
 end
 
 function medium = customShape(medium, pixels_map, largeur_cible, materiau)
-if ~islogical(pixels_map)
-    pixels_map = pixels_map ~= 0;
-end
-
-[r, c] = find(pixels_map);
-if isempty(r)
-    error('La forme personnalisée est vide.');
-end
-
-% Recadrage sur la boîte englobante utile
-pixels_map = pixels_map(min(r):max(r), min(c):max(c));
-
-[NxLocal, NyLocal] = size(medium.sound_speed);
-[sourceH, sourceW] = size(pixels_map);
-
-% Garder une marge de 4 pixels comme le reste du script
-marge = 4;
-largeur_max = min(largeur_cible, NyLocal - 2 * marge);
-hauteur_max = NxLocal - 2 * marge;
-
-% Échelle qui respecte les deux dimensions
-echelle = min(largeur_max / sourceW, hauteur_max / sourceH);
-
-if echelle <= 0
-    error('La grille est trop petite pour accueillir la forme.');
-end
-
-masque = imresize(pixels_map, echelle, 'nearest') > 0;
-
-[h, w] = size(masque);
-
-i0 = floor((NxLocal - h) / 2) + 1;
-j0 = floor((NyLocal - w) / 2) + 1;
-i1 = i0 + h - 1;
-j1 = j0 + w - 1;
-
-if i0 < 1 || j0 < 1 || i1 > NxLocal || j1 > NyLocal
-    error('La forme redimensionnée dépasse la grille.');
+    if ~islogical(pixels_map)
+        pixels_map = pixels_map ~= 0;
+    end
+    
+    [r, c] = find(pixels_map);
+    if isempty(r)
+        error('La forme personnalisée est vide.');
+    end
+    
+    % Recadrage sur la boîte englobante utile
+    pixels_map = pixels_map(min(r):max(r), min(c):max(c));
+    
+    [NxLocal, NyLocal] = size(medium.sound_speed);
+    [sourceH, sourceW] = size(pixels_map);
+    
+    % Garder une marge de 4 pixels comme le reste du script
+    marge = 4;
+    largeur_max = min(largeur_cible, NyLocal - 2 * marge);
+    hauteur_max = NxLocal - 2 * marge;
+    
+    % Échelle qui respecte les deux dimensions
+    echelle = min(largeur_max / sourceW, hauteur_max / sourceH);
+    
+    if echelle <= 0
+        error('La grille est trop petite pour accueillir la forme.');
+    end
+    
+    masque = imresize(pixels_map, echelle, 'nearest') > 0;
+    
+    [h, w] = size(masque);
+    
+    i0 = floor((NxLocal - h) / 2) + 1;
+    j0 = floor((NyLocal - w) / 2) + 1;
+    i1 = i0 + h - 1;
+    j1 = j0 + w - 1;
+    
+    if i0 < 1 || j0 < 1 || i1 > NxLocal || j1 > NyLocal
+        error('La forme redimensionnée dépasse la grille.');
 end
 
 mask = false(NxLocal, NyLocal);
@@ -246,7 +246,7 @@ for forme = formes_a_tester
     else
         obj = load(formes_custom_plaques{forme.index});
         medium = customShape(medium, obj.shape, Nx, materiau);
-        impacts = impacts_formes_custom(forme.index);
+        impacts = impacts_formes_custom{forme.index};
 
     end
     pas_profil = -6:6;  % 0,5 cm par pas, de -3 a +3 cm.

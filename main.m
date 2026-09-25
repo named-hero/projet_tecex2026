@@ -7,11 +7,9 @@
 clear; clc; close all
 
 %Tableau des formes
-%formes_custom_plaques = {"Formes enregistrer\eye.mat","Formes enregistrer\peinture-v1.mat","Formes enregistrer\peinture-v2.mat","Formes enregistrer\piano.mat"};
+formes_custom_plaques = {"Formes enregistrer\eye.mat","Formes enregistrer\peinture-v1.mat","Formes enregistrer\peinture-v2.mat","Formes enregistrer\piano.mat"};
 
 formes_basique = {'Cercle','Rectangle','Trapeze trou et deux coupes', 'Forme en D'};
-
-%impacts_formes_custom = {}
 
 impacts_formes_custom = { 
     [46 19; 46 30; 46 41;
@@ -73,12 +71,8 @@ materiaux(3)=struct( ...
 
 % basique : Fait référence au forme personnalisé
 % index : L'index dans le tableau
-<<<<<<< Updated upstream
 formes_a_tester(1) = struct('index', 2, 'basique', true);
-=======
-formes_a_tester(1) = struct('index', 4, 'basique', false);
->>>>>>> Stashed changes
-materiau = materiaux(1);
+materiau = materiaux(3);
 
 calcul_simulation = true;  % Compute simulation
 analyse_simulation = true; % Compute analyse
@@ -276,14 +270,9 @@ for forme = formes_a_tester
     else
         obj = load(formes_custom_plaques{forme.index});
         medium = customShape(medium, obj.shape, Nx, materiau);
-<<<<<<< Updated upstream
-        impacts = impacts_formes_custom{forme.index};
-
-=======
-            matiere = medium.sound_speed == materiau.sound_speed;
+        matiere = medium.sound_speed == materiau.sound_speed;
         impacts = impacts_formes_custom{forme.index};
   
->>>>>>> Stashed changes
     end
     pas_profil = -6:6;  % 0,5 cm par pas, de -3 a +3 cm.
     sondes = impacts;

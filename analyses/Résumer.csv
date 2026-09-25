@@ -1,3 +1,5 @@
 Date,Nom,Rx moy.,Rx Min/Max,Rx_Ecart_type,Ry moy.,Ry Min/Max,Ry_Ecart_type,Contraste moy.,Contraste Min/Max,Contraste_Ecart_type,Nb_senseurs,materiau
 24-Sep-2026 17:26:18,Rectangle,3.26,2.874 – 4.404,0.5523,2.974,2.788 – 3.13,0.131,2.624,2.197 – 3.572,0.5481,9,
 25-Sep-2026 11:27:30,Rectangle,4.139,3.77 – 5.191,0.5223,3.682,3.41 – 3.921,0.2184,2.511,2.19 – 3.161,0.4542,9,Acier
+25-Sep-2026 11:43:39,Rectangle,4.302,3.895 – 5.482,0.5727,3.793,3.492 – 4.049,0.2481,2.49,2.167 – 3.115,0.4499,9,Aluminium
+25-Sep-2026 11:44:03,Rectangle,3.086,2.692 – 3.961,0.4667,2.859,2.686 – 2.963,0.09783,2.682,2.253 – 3.612,0.5552,9,Acrylic

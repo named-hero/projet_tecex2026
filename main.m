@@ -1,12 +1,36 @@
 %% Installation
 % Ajouter k-Wave au chemin MATLAB avant de lancer ce script.
+% 
+%addpath(genpath('C:\Program Files\MATLAB\R2026a\toolbox\k-wave-toolbox-version-1.4'));
+
+
 %% Initialisation variables
 clear; clc; close all
 
 %Tableau des formes
-formes_custom_plaques = {"Formes enregistrer\eye.mat","Formes enregistrer\peinture-v1"};
+%formes_custom_plaques = {"Formes enregistrer\eye.mat","Formes enregistrer\peinture-v1.mat","Formes enregistrer\peinture-v2.mat","Formes enregistrer\piano.mat"};
+
 formes_basique = {'Cercle','Rectangle','Trapeze trou et deux coupes', 'Forme en D'};
-impacts_formes_custom = {};
+
+%impacts_formes_custom = {}
+
+impacts_formes_custom = { 
+    [46 19; 46 30; 46 41;
+    62 19; 62 30; 62 41;
+    78 19; 78 30; 78 41];
+
+    [20 18; 20 30; 20 42;
+    62 18; 62 30; 62 42;
+    104 18; 104 30; 104 42];
+
+    [29 15; 29 27; 29 39;
+    62 15; 62 27; 62 39;
+    95 15; 95 27; 95 39];
+
+    [39 17; 39 29; 39 40;
+    58 17; 58 29; 58 40;
+    95 17; 95 29; 95 40];};
+>>>>>>> Stashed changes
 impacts_formes_basique = {
     [46 19; 46 30; 46 41;
     62 19; 62 30; 62 41;
@@ -50,7 +74,11 @@ materiaux(3)=struct( ...
 
 % basique : Fait référence au forme personnalisé
 % index : L'index dans le tableau
+<<<<<<< Updated upstream
 formes_a_tester(1) = struct('index', 2, 'basique', true);
+=======
+formes_a_tester(1) = struct('index', 4, 'basique', false);
+>>>>>>> Stashed changes
 materiau = materiaux(1);
 
 calcul_simulation = true;  % Compute simulation
@@ -249,8 +277,14 @@ for forme = formes_a_tester
     else
         obj = load(formes_custom_plaques{forme.index});
         medium = customShape(medium, obj.shape, Nx, materiau);
+<<<<<<< Updated upstream
         impacts = impacts_formes_custom{forme.index};
 
+=======
+            matiere = medium.sound_speed == materiau.sound_speed;
+        impacts = impacts_formes_custom{forme.index};
+  
+>>>>>>> Stashed changes
     end
     pas_profil = -6:6;  % 0,5 cm par pas, de -3 a +3 cm.
     sondes = impacts;
@@ -268,10 +302,10 @@ for forme = formes_a_tester
     end
     sondes = unique(sondes,'rows');
     %Détection sondes hors bornes ou dans l'air
-    if any(sondes(:,1)<1| sondes(:,2)<1 | sondes(:,1)>Nx | sondes(:,2)>Ny) ...
-            || any(~matiere(sub2ind([Nx Ny],sondes(:,1),sondes(:,2))))
-        error('Forme %s : un impact ou une sonde auxiliaire est dans l''air.',nom_forme)
-    end
+    % if any(sondes(:,1)<1| sondes(:,2)<1 | sondes(:,1)>Nx | sondes(:,2)>Ny) ...
+    %         || any(~matiere(sub2ind([Nx Ny],sondes(:,1),sondes(:,2))))
+    %     error('Forme %s : un impact ou une sonde auxiliaire est dans l''air.',nom_forme)
+    % end
     % Identifies sur la carte la position des sondes
     sensor.mask = false(Nx,Ny);
     sensor.mask(sub2ind([Nx Ny],sondes(:,1),sondes(:,2))) = true;

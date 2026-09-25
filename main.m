@@ -1,7 +1,6 @@
 %% Installation
 % Ajouter k-Wave au chemin MATLAB avant de lancer ce script.
 % 
-addpath(genpath('C:\Program Files\MATLAB\R2026a\toolbox\k-wave-toolbox-version-1.4'));
 
 
 %% Initialisation variables
@@ -30,7 +29,7 @@ impacts_formes_custom = {
     [39 17; 39 29; 39 40;
     58 17; 58 29; 58 40;
     95 17; 95 29; 95 40];};
->>>>>>> Stashed changes
+
 impacts_formes_basique = {
     [46 19; 46 30; 46 41;
     62 19; 62 30; 62 41;

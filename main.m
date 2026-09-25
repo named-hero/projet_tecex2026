@@ -32,26 +32,29 @@ impacts_formes_basique = {
 %    lignes_impacts = [24 61 105]; colonnes_impacts = [15 25 35];
 
 
-%Acier TODO Mettre les bonnnes propriétés
+% http://hyperphysics.phy-astr.gsu.edu/hbase/Sound/souspe2.html
 materiaux(1)=struct( ...
-    'sound_speed', 3000,  ...
-    'density', 2500);
-%Aluminium TODO Mettre les bonnnes propriétés
+    'sound_speed', 5790,  ...
+    'density', 7900, ...
+    'nom_materiau', "Acier");
+% http://hyperphysics.phy-astr.gsu.edu/hbase/Sound/souspe2.html
 materiaux(2)=struct( ...
-    'sound_speed', 3000,  ...
-    'density', 2500);
-%Plastique TODO Mettre les bonnnes propriétés
+    'sound_speed', 6420,  ...
+    'density', 2700, ...
+    'nom_materiau', "Aluminium");
+% https://www.ndt.net/links/proper.htm
 materiaux(3)=struct( ...
-    'sound_speed', 3000,  ...
-    'density', 2500);
+    'sound_speed', 2750,  ...
+    'density', 1190, ...
+    'nom_materiau', "Acrylic");
 
 % basique : Fait référence au forme personnalisé
 % index : L'index dans le tableau
-formes_a_tester(1) = struct('index', 2, 'basique', false);
+formes_a_tester(1) = struct('index', 2, 'basique', true);
 materiau = materiaux(1);
 
-calcul_simulation = false;  % Compute simulation
-analyse_simulation = false; % Compute analyse
+calcul_simulation = true;  % Compute simulation
+analyse_simulation = true; % Compute analyse
 
 %% Simulation grid parameter
 Nx = 124;
@@ -320,9 +323,14 @@ for forme = formes_a_tester
         'PMLSize',2,'PMLInside',false,'DataCast','single','PlotSim',false);
 
     %% Sauvegarde des donnees
-    nom_fichier = sprintf('Sim_9_impacts_forme_%d.mat',nom_forme);
-    save(nom_fichier,'sensor_data','positions_sondes','impacts', ...
-        'indices_impacts','dx','dy','materiau','forme','formes_basique', ...
-        'cercle','rectangle','trapeze','palette','forme_D','piano')
+    nom_fichier = string(sprintf('Sim_%s.mat',nom_forme));
+    date = datetime('now');
+    save(nom_fichier, 'date', 'nom_forme', 'sensor_data','positions_sondes','impacts', ...
+        'dx','dy','materiau','forme','formes_basique', 'formes_custom_plaques')
     fprintf('Enregistre : %s\n',nom_fichier)
+
+    %% Analyse optionnelle des signaux simulés
+    if analyse_simulation
+        Analyser_simulation(nom_fichier)
+    end
 end

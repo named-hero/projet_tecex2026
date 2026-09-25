@@ -319,6 +319,7 @@ for forme = formes_a_tester
     %% Simulation
     fprintf('Simulation %s (%d sondes virtuelles)\n', ...
         nom_forme,size(positions_sondes,1))
+    kgrid.makeTime(medium.sound_speed, 0.2);
     sensor_data = kspaceFirstOrder2D(kgrid,medium,source,sensor, ...
         'PMLSize',2,'PMLInside',false,'DataCast','single','PlotSim',false);
 

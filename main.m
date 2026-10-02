@@ -1,6 +1,6 @@
 %% Installation
 % Ajouter k-Wave au chemin MATLAB avant de lancer ce script.
-% 
+% addpath(genpath('C:\Program Files\MATLAB\R2026a\toolbox\k-wave-toolbox-version-1.4'));
 
 
 %% Initialisation variables

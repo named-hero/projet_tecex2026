@@ -1,0 +1,27 @@
+{
+  "largeur": 400,
+  "hauteur": 200,
+  "image": "",
+  "zones": {
+    "C4": {
+      "points": [[30, 40], [110, 40], [110, 160], [30, 160]],
+      "couleur_repos": "#8ecae6",
+      "couleur_active": "#ffd60a"
+    },
+    "D4": {
+      "points": [[120, 40], [200, 40], [200, 160], [120, 160]],
+      "couleur_repos": "#a7c957",
+      "couleur_active": "#ffd60a"
+    },
+    "E4": {
+      "points": [[210, 40], [290, 40], [290, 160], [210, 160]],
+      "couleur_repos": "#f4a261",
+      "couleur_active": "#ffd60a"
+    },
+    "F4": {
+      "points": [[300, 40], [380, 40], [380, 160], [300, 160]],
+      "couleur_repos": "#cdb4db",
+      "couleur_active": "#ffd60a"
+    }
+  }
+}

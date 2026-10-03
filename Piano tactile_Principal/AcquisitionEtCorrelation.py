@@ -14,9 +14,10 @@ Prerequis : un .npz genere sur la VRAIE plaque, avec EnregistrerBanqueGrille.py.
 import time
 import numpy as np
 import sounddevice as sd
+import os
 
 # --- Parametres ---
-CHEMIN_BANQUE = "/Users/3abid/Desktop/POLY/Cours/tech ex/2/piano/resultats_banque/Banque_20261001_200417.npz"
+CHEMIN_BANQUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resultats_banque", "Banque_20261002_175910.npz")
 DEVICE_ENTREE = 1        # index du micro/piezo (C-Media USB Headphone Set, confirme avec RecordMicro.py)
 FS = 44100
 DTYPE = "float32"

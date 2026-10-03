@@ -33,7 +33,8 @@ SEUIL_FACTEUR = 6.0
 DUREE_SILENCE_REF = 0.2
 GARDE_INITIALE = 0.15   # s ignorees en debut de tampon avant de chercher un impact (evite
                         # un artefact de demarrage du flux audio pris pour un impact a t=0)
-
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 4))
+plt.show(block=False)
 
 def choisir_peripherique():
     devices = sd.query_devices()
@@ -95,14 +96,15 @@ def enregistrer_un_point(num):
         fenetre = tampon[debut:fin]
 
         t1, t2 = np.arange(len(tampon)) / FS, np.arange(len(fenetre)) / FS
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4))
+        ax1.clear(); ax2.clear()
         ax1.plot(t1, tampon)
         ax1.axvline(idx / FS, color='r', linestyle='--')
         ax1.axvspan(debut / FS, fin / FS, color='r', alpha=0.15)
         ax1.set_title(f"Point {num} - tampon complet")
         ax2.plot(t2, fenetre)
         ax2.set_title(f"Point {num} - reponse conservee ({DUREE_REPONSE:.2f} s)")
-        plt.tight_layout(); plt.show()
+        plt.tight_layout(); 
+        plt.draw()
 
         if input("  Garder ? [Entree = oui, n = recommencer] : ").strip().lower() == 'n':
             continue

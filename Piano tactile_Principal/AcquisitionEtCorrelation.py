@@ -15,10 +15,10 @@ import time
 import numpy as np
 import sounddevice as sd
 import os
-import protocole
+from Protocole_et_Communication import envoyer
 
 # --- Parametres ---
-CHEMIN_BANQUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resultats_banque", "Banque_9 points.npz")
+CHEMIN_BANQUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resultats_banque", "Banque_12 points.npz")
 DEVICE_ENTREE = 1        # index du micro/piezo (C-Media USB Headphone Set, confirme avec RecordMicro.py)
 FS = 44100
 DTYPE = "float32"
@@ -50,7 +50,18 @@ BANQUE = BANQUE_COMPLETE[:, :N_REPONSE]  # ne garde que le debut de chaque repon
 # un ou plusieurs points. A completer au fil de l'exploration (teste, note quel point gagne
 # systematiquement sur quel autre, ajoute-le au meme groupe).
 GROUPES = {
-    "note_1": ["24"],        
+    "C4": ["1"],
+    "D4": ["2"],
+    "E4": ["3"],
+    "F4": ["4"],
+    "G4": ["5"],
+    "A4": ["6"],
+    "B4": ["7"],
+    "C#4": ["8"],
+    "D#4": ["9"],
+    "F#4": ["10"], 
+    "G#4": ["11"], 
+    "A#4": ["12"], 
 }
 POINT_VERS_NOTE = {point: note for note, points in GROUPES.items() for point in points}
 
@@ -70,7 +81,7 @@ def identifier_note(fenetre):
     i = int(np.argmax(scores))
     point = str(LABELS[i])
     note = POINT_VERS_NOTE.get(point, point)  # un point hors groupe est sa propre note
-    return note, point, scores[i]
+    return note, point, scores[i], scores
 
 
 def calibrer_seuil():
@@ -117,11 +128,12 @@ class Detecteur:
             self.tampon = np.concatenate([self.tampon, bloc])
             if len(self.tampon) >= N_REPONSE:
                 fenetre = self.tampon[:N_REPONSE]
-                note, point, score = identifier_note(fenetre)
+                note, point, score, correlations = identifier_note(fenetre)
                 pic = float(np.max(np.abs(fenetre)))
                 latence_ms = (time.time() - self.t_debut_impact) * 1000
-                protocole.envoyer_message(f"Impact -> {note:8s} (point {point}, correlation {score:.2f}, "
-                                          f"pic {pic:.3f}, latence {latence_ms:.0f} ms)")
+                corr = [correlations[0:5], correlations[5:10]]
+
+                envoyer(corr, note, latence_ms)
                 self.derniere_t = time.time()
                 self.etat = "attente"
                 self.tampon = np.zeros(0, dtype=DTYPE)

@@ -21,15 +21,7 @@ import json, sys, time
 from pathlib import Path
 # numpy : tableaux (matrice, table de couleurs)
 import numpy as np
-<<<<<<< HEAD
-from PyQt6 import QtCore, QtGui, QtNetwork, QtWidgets
-=======
-# PySide6 = bibliothèque de fenêtres Qt, découpée en modules :
-#   QtCore (points, outils de base), QtGui (couleurs, polygones),
-#   QtNetwork (socket UDP), QtWidgets (fenêtres, textes), QtMultimedia (son)
-from PySide6 import QtCore, QtGui, QtNetwork, QtWidgets, QtMultimedia
-# pyqtgraph : graphiques rapides par-dessus Qt (abrégé pg)
->>>>>>> ff96750417860029243a1f1c7fb3ca80e4112b1c
+from PyQt6 import QtCore, QtGui, QtNetwork, QtWidgets, QtMultimedia
 import pyqtgraph as pg
 
 # Notre fichier commun : décodage des messages, adresse et port
@@ -154,6 +146,7 @@ class FenetrePiano(QtWidgets.QMainWindow):
         nom_image = config.get("image", "")
         if nom_image and (DOSSIER / nom_image).exists():
             pixmap = QtGui.QPixmap(str(DOSSIER / nom_image))
+            pixmap = pixmap.transformed(QtGui.QTransform().scale(-1, 1))
             fond = QtWidgets.QGraphicsPixmapItem(pixmap)
             fond.setZValue(0)                 # z = 0 : tout au fond
             self.plot_piano.addItem(fond)
@@ -271,7 +264,7 @@ class FenetrePiano(QtWidgets.QMainWindow):
     def _eclairer(self, actives):
         """Ne change la couleur (et le son) que des notes dont l'état a changé."""
         # Notes nouvellement pressées : on les allume et on joue le son
-        for note in actives - self.notes_actives:
+        for note in actives:
             self._colorier(note, "active")
             son = self.sons.get(note)
             if son is not None:

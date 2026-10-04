@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 
 import numpy as np
-from PySide6 import QtCore, QtGui, QtNetwork, QtWidgets
+from PyQt6 import QtCore, QtGui, QtNetwork, QtWidgets
 import pyqtgraph as pg
 
 import protocole

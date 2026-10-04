@@ -15,9 +15,10 @@ import time
 import numpy as np
 import sounddevice as sd
 import os
+import protocole
 
 # --- Parametres ---
-CHEMIN_BANQUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resultats_banque", "Banque_20261002_175910.npz")
+CHEMIN_BANQUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resultats_banque", "Banque_9 points.npz")
 DEVICE_ENTREE = 1        # index du micro/piezo (C-Media USB Headphone Set, confirme avec RecordMicro.py)
 FS = 44100
 DTYPE = "float32"
@@ -49,7 +50,7 @@ BANQUE = BANQUE_COMPLETE[:, :N_REPONSE]  # ne garde que le debut de chaque repon
 # un ou plusieurs points. A completer au fil de l'exploration (teste, note quel point gagne
 # systematiquement sur quel autre, ajoute-le au meme groupe).
 GROUPES = {
-    "note_24": ["24"],             
+    "note_1": ["24"],        
 }
 POINT_VERS_NOTE = {point: note for note, points in GROUPES.items() for point in points}
 
@@ -119,8 +120,8 @@ class Detecteur:
                 note, point, score = identifier_note(fenetre)
                 pic = float(np.max(np.abs(fenetre)))
                 latence_ms = (time.time() - self.t_debut_impact) * 1000
-                print(f"Impact -> {note:8s} (point {point}, correlation {score:.2f}, "
-                      f"pic {pic:.3f}, latence {latence_ms:.0f} ms)")
+                protocole.envoyer_message(f"Impact -> {note:8s} (point {point}, correlation {score:.2f}, "
+                                          f"pic {pic:.3f}, latence {latence_ms:.0f} ms)")
                 self.derniere_t = time.time()
                 self.etat = "attente"
                 self.tampon = np.zeros(0, dtype=DTYPE)

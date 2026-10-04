@@ -1,27 +1,27 @@
 {
-  "largeur": 400,
+  "largeur": 650,
+
   "hauteur": 200,
-  "image": "",
+
+  "image": "plaque.jpeg",
+
+  "echelle": 1.5,
+  
+  "decalage": [195, 578],
+
   "zones": {
-    "C4": {
-      "points": [[30, 40], [110, 40], [110, 160], [30, 160]],
-      "couleur_repos": "#8ecae6",
-      "couleur_active": "#ffd60a"
-    },
-    "D4": {
-      "points": [[120, 40], [200, 40], [200, 160], [120, 160]],
-      "couleur_repos": "#a7c957",
-      "couleur_active": "#ffd60a"
-    },
-    "E4": {
-      "points": [[210, 40], [290, 40], [290, 160], [210, 160]],
-      "couleur_repos": "#f4a261",
-      "couleur_active": "#ffd60a"
-    },
-    "F4": {
-      "points": [[300, 40], [380, 40], [380, 160], [300, 160]],
-      "couleur_repos": "#cdb4db",
-      "couleur_active": "#ffd60a"
-    }
+    "C4": {"points": [[30, 40], [110, 40], [110, 160], [30, 160]], "couleur_repos": "#ffffff", "couleur_active": "#ff8c00"},
+    "D4": {"points": [[120, 40], [200, 40], [200, 160], [120, 160]], "couleur_repos": "#ffffff", "couleur_active": "#ff8c00"},
+    "E4": {"points": [[210, 40], [290, 40], [290, 160], [210, 160]], "couleur_repos": "#ffffff", "couleur_active": "#ff8c00"},
+    "F4": {"points": [[300, 40], [380, 40], [380, 160], [300, 160]], "couleur_repos": "#ffffff", "couleur_active": "#ff8c00"},
+    "G4": {"points": [[390, 40], [470, 40], [470, 160], [390, 160]], "couleur_repos": "#ffffff", "couleur_active": "#ff8c00"},
+    "A4": {"points": [[480, 40], [560, 40], [560, 160], [480, 160]], "couleur_repos": "#ffffff", "couleur_active": "#ff8c00"},
+    "B4": {"points": [[570, 40], [650, 40], [650, 160], [570, 160]], "couleur_repos": "#ffffff", "couleur_active": "#ff8c00"},
+
+    "C#4": {"points": [[90, 40], [140, 40], [140, 105], [90, 105]], "couleur_repos": "#000000", "couleur_active": "#ff8c00", "z": 2},
+    "D#4": {"points": [[180, 40], [230, 40], [230, 105], [180, 105]], "couleur_repos": "#000000", "couleur_active": "#ff8c00", "z": 2},
+    "F#4": {"points": [[360, 40], [410, 40], [410, 105], [360, 105]], "couleur_repos": "#000000", "couleur_active": "#ff8c00", "z": 2},
+    "G#4": {"points": [[450, 40], [500, 40], [500, 105], [450, 105]], "couleur_repos": "#000000", "couleur_active": "#ff8c00", "z": 2},
+    "A#4": {"points": [[540, 40], [590, 40], [590, 105], [540, 105]], "couleur_repos": "#000000", "couleur_active": "#ff8c00", "z": 2}
   }
 }

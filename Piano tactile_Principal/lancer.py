@@ -19,7 +19,7 @@ DOSSIER = Path(__file__).parent
 AFFICHAGE = DOSSIER / "affichage.py"
 # Programme de traitement à lancer : test_envoi.py pour les tests, puis
 # le fichier de traitement du collègue (il suffit de changer ce nom).
-TRAITEMENT = DOSSIER / "AcquisitionEtCorrelation_4signauxparpoint.py"
+TRAITEMENT = DOSSIER / "AcquisitionEtCorrelation.py"
 
 # Temps laissé à la fenêtre pour ouvrir son socket avant de lancer le traitement
 # (UDP perd sans erreur les messages envoyés avant que l'affichage écoute).

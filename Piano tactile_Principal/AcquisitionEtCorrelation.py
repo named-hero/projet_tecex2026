@@ -1,152 +1,202 @@
 """
 AcquisitionEtCorrelation.py
 
-Ecoute le piezo en continu. Detecte un impact (seuil sur le pic observe au
-repos). Identifie le point par correlation avec la banque de reference (.npz),
-puis regroupe plusieurs points en une seule note via GROUPES ci-dessous
-(certains points se confondent trop a la correlation pour etre des notes
-distinctes : plutot que forcer une distinction artificielle, on les traite
-comme une meme note).
+Traitement pour la plaque a 40 points : 12 notes, chacune faite de 2 points (barres verticales).
+Principe : (piezo -> detection d'impact -> correlation avec une
+banque de references -> note -> envoyer() vers l'affichage), avec :
 
-Prerequis : un .npz genere sur la VRAIE plaque, avec EnregistrerBanqueGrille.py.
+  - Banque : resultats_banque/Banque_enrichie.npz (600 references, ~15 par point : frappes
+    d'intensites variees). Un point = la MEILLEURE correlation parmi ses references.
+  - Notes : chaque note regroupe 2 points (GROUPES ci-dessous). Les 16 points sans note
+    (zones mortes) sont RETIRES des candidats : une frappe dessus joue la note du point le plus
+    ressemblant.
+  - Detection : seuil = 3 x pic au repos, puis reconnaissance seulement si la plaque est revenue au
+    calme (0.3 s) et si la frappe est franche (filtres PIC_MIN / NETTETE_MAX). Sans cela, la
+    vibration residuelle et le bruit declenchaient de fausses notes (~49 % des declenchements).
+    Consequence : deux frappes doivent etre separees d'au moins ~0.5 s.
+
+Usage : python3 AcquisitionEtCorrelation.py        (ou, avec l'affichage : python3 lancer.py)
+Ctrl+C pour arreter.
 """
 
+import os
+import queue
 import time
+
 import numpy as np
 import sounddevice as sd
-import os
+
 from Protocole_et_Communication import envoyer
 
+DOSSIER = os.path.dirname(os.path.abspath(__file__))
+
 # --- Parametres ---
-CHEMIN_BANQUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resultats_banque", "Banque_12 points.npz")
-DEVICE_ENTREE = 1        # index du micro/piezo (C-Media USB Headphone Set, confirme avec RecordMicro.py)
+CHEMIN_BANQUE = os.path.join(DOSSIER, "resultats_banque", "Banque_enrichie.npz")
+DEVICE_ENTREE = 1         # C-Media USB Headphone Set (meme index que le reste du projet)
 FS = 44100
 DTYPE = "float32"
 TAILLE_BLOC = 512         # ~11.6 ms/bloc
-MARGE_SEUIL = 3.0         # seuil = marge x pic observe au repos (pas l'ecart-type : garantit zero
-                          # declenchement pendant la calibration elle-meme)
+MARGE_SEUIL = 3.0         # seuil = 3 x pic observe au repos
 DUREE_CALIBRATION = 2.0   # s de silence au demarrage
-GARDE_INITIALE = 0.15     # s ignorees en debut de calibration (artefact de demarrage du flux audio,
-                          # meme precaution que EnregistrerBanqueGrille.py)
-REFRACTAIRE = 0.5         # s, anti double-declenchement sur la meme frappe
-DUREE_IDENTIFICATION = 0.08  # s utilisees pour la correlation (au lieu des 0.5 s stockees) :
-                          # l'essentiel du signal utile retombe sous 5% de son pic en 30-55 ms
-                          # (verifie sur la banque), donc inutile d'attendre les 500 ms completes.
-                          # Reutilise simplement le debut de chaque reponse deja enregistree.
+GARDE_INITIALE = 0.15     # s ignorees en debut de calibration
+REFRACTAIRE = 0.5         # s minimum entre deux frappes
+CALME_REQUIS = 0.3        # s sous le seuil avant de rearmer la detection
+PIC_MIN = 0.10            # pic minimal d'une frappe valide (sous 0.10 : 95 % d'erreurs mesurees)
+NETTETE_MAX = 0.3         # (1re ms de la fenetre) / pic au-dela duquel il n'y a pas d'attaque nette
 
-if DEVICE_ENTREE is not None:
-    sd.default.device = (DEVICE_ENTREE, sd.default.device[1])
-
-# --- Banque de reference ---
-_b = np.load(CHEMIN_BANQUE)
-LABELS, BANQUE_COMPLETE = _b["labels"], _b["banque"]
-N_MARGE = int(round(float(_b["marge_avant"]) * FS))
-N_REPONSE = min(int(round(DUREE_IDENTIFICATION * FS)), BANQUE_COMPLETE.shape[1])
-BANQUE = BANQUE_COMPLETE[:, :N_REPONSE]  # ne garde que le debut de chaque reponse de reference
-
-# --- Regroupement des points en notes ---
-# Des points proches ou acoustiquement similaires se confondent a la correlation (ex: 8 est
-# toujours identifie comme 24). Plutot que de lutter contre, on les regroupe : une "note" =
-# un ou plusieurs points. A completer au fil de l'exploration (teste, note quel point gagne
-# systematiquement sur quel autre, ajoute-le au meme groupe).
+# --- Disposition des notes : note -> numeros de points (photo de la plaque) ---
+# Les noms de notes doivent exister dans piano.json et dans notes/ (c4.wav, c-4.wav = C#4, ...).
+# Pour changer quelle note est jouee par quelle zone, ne modifier QUE les noms a gauche.
 GROUPES = {
-    "C4": ["1"],
-    "D4": ["2"],
-    "E4": ["3"],
-    "F4": ["4"],
-    "G4": ["5"],
-    "A4": ["6"],
-    "B4": ["7"],
-    "C#4": ["8"],
-    "D#4": ["9"],
-    "F#4": ["10"], 
-    "G#4": ["11"], 
-    "A#4": ["12"], 
+    "C4":  [1, 5],
+    "D4":  [2, 6],
+    "E4":  [3, 8],
+    "F4":  [11, 18],
+    "G4":  [14, 21],
+    "A4":  [15, 22],
+    "B4":  [17, 23],
+    "C#4": [20, 26],
+    "D#4": [28, 34],
+    "F#4": [29, 36],
+    "G#4": [30, 37],
+    "A#4": [33, 40],
 }
-POINT_VERS_NOTE = {point: note for note, points in GROUPES.items() for point in points}
+N_POINTS = 40
+NOTE_DE = {p: note for note, pts in GROUPES.items() for p in pts}      # point (1..40) -> note
+POINTS_MORTS = [p for p in range(1, N_POINTS + 1) if p not in NOTE_DE]  # sans note : jamais retenus
 
 
-def correlation(a, b):
-    # correlation croisee normalisee, max sur tous les decalages
-    a, b = a.astype(np.float64), b.astype(np.float64)
-    na, nb = np.linalg.norm(a), np.linalg.norm(b)
-    if na == 0 or nb == 0:
-        return 0.0
-    return np.max(np.abs(np.correlate(a, b, mode="full"))) / (na * nb)
+class Identificateur:
+    """Banque de references pretraitee (FFT) + score de chaque point pour une frappe."""
+
+    def __init__(self, chemin):
+        d = np.load(chemin)
+        refs = d["refs"].astype(np.float64)
+        self.labels = d["labels"].astype(int)             # numero de point (1..40) de chaque reference
+        self.n_marge = int(round(float(d["marge_avant"]) * FS))
+        self.n_ech = refs.shape[1]
+        normes = np.linalg.norm(refs, axis=1)
+        normes[normes == 0] = np.inf
+        self.normes = normes
+        self.nfft = 1 << int(np.ceil(np.log2(2 * self.n_ech - 1)))
+        self.F = np.fft.rfft(refs, self.nfft, axis=1)
+        self.candidats = np.array([p in NOTE_DE for p in range(1, N_POINTS + 1)])
+
+    def scores(self, fenetre):
+        """Score (0..1) de chacun des 40 points = meilleure correlation max normalisee de ses references."""
+        f = np.asarray(fenetre, dtype=np.float64)[:self.n_ech]
+        nf = np.linalg.norm(f)
+        S = np.zeros(N_POINTS)
+        if nf == 0:
+            return S
+        xc = np.fft.irfft(np.fft.rfft(f, self.nfft)[None, :] * np.conj(self.F), self.nfft, axis=1)
+        c = np.clip(np.max(np.abs(xc), axis=1) / (nf * self.normes), 0.0, 1.0)
+        np.maximum.at(S, self.labels - 1, c)
+        return S
+
+    def identifier(self, fenetre):
+        """Renvoie (note, point 1..40, scores des 40 points). Les zones mortes ne sont jamais retenues."""
+        S = self.scores(fenetre)
+        point = int(np.argmax(np.where(self.candidats, S, -np.inf))) + 1
+        return NOTE_DE[point], point, S
 
 
-def identifier_note(fenetre):
-    """Trouve le point le plus proche par correlation, renvoie (note, point, score)."""
-    scores = [correlation(fenetre, ref) for ref in BANQUE]
-    i = int(np.argmax(scores))
-    point = str(LABELS[i])
-    note = POINT_VERS_NOTE.get(point, point)  # un point hors groupe est sa propre note
-    return note, point, scores[i], scores
+class Detecteur:
+    """Detection d'impact avec rearmement apres retour au calme.
+    Les frappes capturees (fenetre de n_ech echantillons, instant de detection) arrivent dans la file."""
+
+    def __init__(self, seuil, n_ech, n_marge, file):
+        self.seuil, self.n_ech, self.n_marge, self.file = seuil, n_ech, n_marge, file
+        self.mode = "attente"
+        self.tampon = np.zeros(0, dtype=DTYPE)
+        self.t0 = 0.0
+        self.calme = 0.0            # s consecutives sous le seuil
+        self.derniere = -np.inf
+
+    def traiter(self, bloc, maintenant):
+        if self.mode == "attente":
+            depasse = np.abs(bloc) > self.seuil
+            if not depasse.any():
+                self.calme += len(bloc) / FS
+                return
+            if self.calme < CALME_REQUIS or maintenant - self.derniere < REFRACTAIRE:
+                self.calme = 0.0     # vibration residuelle ou bruit : on attend le calme
+                return
+            dep = np.where(depasse)[0]
+            debut = max(0, dep[0] - self.n_marge)
+            self.tampon = bloc[debut:].copy()
+            self.mode = "capture"
+            self.t0 = maintenant
+        else:
+            self.tampon = np.concatenate([self.tampon, bloc])
+            if len(self.tampon) >= self.n_ech:
+                self.file.put((self.tampon[:self.n_ech].copy(), self.t0))
+                self.derniere = maintenant
+                self.mode = "attente"
+                self.calme = 0.0
+                self.tampon = np.zeros(0, dtype=DTYPE)
+
+
+def raison_rejet(fenetre):
+    """None si la frappe est valide, sinon la raison pour laquelle elle est ignoree."""
+    pic = float(np.max(np.abs(fenetre)))
+    if pic < PIC_MIN:
+        return f"pic trop faible ({pic:.3f} < {PIC_MIN})"
+    debut = float(np.max(np.abs(fenetre[:int(0.001 * FS)])))
+    if debut / pic > NETTETE_MAX:
+        return "pas d'attaque nette (vibration residuelle ou bruit)"
+    return None
 
 
 def calibrer_seuil():
     print(f"Calibration : ne touchez a rien pendant {DUREE_CALIBRATION:.0f} s...")
     silence = sd.rec(int(DUREE_CALIBRATION * FS), samplerate=FS, channels=1, dtype=DTYPE)
     sd.wait()
-    n_garde = int(GARDE_INITIALE * FS)
-    silence_utile = np.abs(silence[n_garde:, 0])
-    # 99.9e percentile plutot que le max : un max est fragile face a un seul echantillon
-    # aberrant (artefact de demarrage, glitch electrique), le percentile l'ignore.
-    pic_repos = float(np.percentile(silence_utile, 99.9))
+    pic_repos = float(np.percentile(np.abs(silence[int(GARDE_INITIALE * FS):, 0]), 99.9))
     seuil = MARGE_SEUIL * pic_repos
     print(f"Pic au repos : {pic_repos:.5f}  ->  seuil : {seuil:.5f}")
     return seuil
 
 
-class Detecteur:
-    """Machine a etats : attente -> capture -> identification -> attente."""
+def main():
+    if not os.path.exists(CHEMIN_BANQUE):
+        raise SystemExit(f"Banque introuvable : {CHEMIN_BANQUE}\n"
+                         "Elle se genere avec Caracterisation/ConstruireBanque.py")
+    ident = Identificateur(CHEMIN_BANQUE)
+    print(f"Banque : {os.path.basename(CHEMIN_BANQUE)} ({len(ident.labels)} references, "
+          f"{ident.n_ech / FS:.2f} s chacune). Zones mortes retirees : {POINTS_MORTS}")
 
-    def __init__(self, seuil):
-        self.seuil = seuil
-        self.etat = "attente"
-        self.tampon = np.zeros(0, dtype=DTYPE)
-        self.derniere_t = -np.inf
-        self.t_debut_impact = None  # pour mesurer la latence
+    if DEVICE_ENTREE is not None:
+        sd.default.device = (DEVICE_ENTREE, sd.default.device[1])
+    seuil = calibrer_seuil()
 
-    def callback(self, indata, frames, t_info, status):
+    file = queue.Queue()
+    det = Detecteur(seuil, ident.n_ech, ident.n_marge, file)
+
+    def callback(indata, frames, t_info, status):
         if status:
             print(status)
-        bloc = indata[:, 0]
-        maintenant = time.time()
+        det.traiter(indata[:, 0], time.time())
 
-        if self.etat == "attente":
-            if maintenant - self.derniere_t < REFRACTAIRE:
-                return
-            depassements = np.where(np.abs(bloc) > self.seuil)[0]
-            if depassements.size:
-                debut = max(0, depassements[0] - N_MARGE)
-                self.tampon = bloc[debut:].copy()
-                self.etat = "capture"
-                self.t_debut_impact = maintenant  # debut du chrono de latence
-
-        else:  # capture
-            self.tampon = np.concatenate([self.tampon, bloc])
-            if len(self.tampon) >= N_REPONSE:
-                fenetre = self.tampon[:N_REPONSE]
-                note, point, score, correlations = identifier_note(fenetre)
-                pic = float(np.max(np.abs(fenetre)))
-                latence_ms = (time.time() - self.t_debut_impact) * 1000
-                corr = [correlations[0:5], correlations[5:10]]
-
-                envoyer(corr, note, latence_ms)
-                self.derniere_t = time.time()
-                self.etat = "attente"
-                self.tampon = np.zeros(0, dtype=DTYPE)
-
-
-def main():
-    seuil = calibrer_seuil()
-    detecteur = Detecteur(seuil)
     print("Ecoute en continu (Ctrl+C pour arreter)...")
-    with sd.InputStream(samplerate=FS, channels=1, dtype=DTYPE,
-                         blocksize=TAILLE_BLOC, callback=detecteur.callback):
-        while True:
-            time.sleep(0.1)
+    with sd.InputStream(samplerate=FS, channels=1, dtype=DTYPE, blocksize=TAILLE_BLOC, callback=callback):
+        try:
+            while True:
+                try:
+                    fenetre, t0 = file.get(timeout=0.2)
+                except queue.Empty:
+                    continue
+                raison = raison_rejet(fenetre)
+                if raison:
+                    print(f"    (declenchement ignore : {raison})")
+                    continue
+                note, point, S = ident.identifier(fenetre)
+                latence_ms = (time.time() - t0) * 1000
+                corr = [S[0:5], S[5:10]]   # comme dans le script d'origine (le visuel est laisse a l'interface)
+                envoyer(corr, note, latence_ms)
+                print(f">>> {note:<3s} (point {point:>2d}, score {S[point - 1]:.2f})   {latence_ms:.0f} ms")
+        except KeyboardInterrupt:
+            print("\nArret.")
 
 
 if __name__ == "__main__":

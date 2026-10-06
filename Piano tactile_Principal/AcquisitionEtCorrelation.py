@@ -45,25 +45,56 @@ PIC_MIN = 0.10            # pic minimal d'une frappe valide (sous 0.10 : 95 % d'
 NETTETE_MAX = 0.3         # (1re ms de la fenetre) / pic au-dela duquel il n'y a pas d'attaque nette
 
 # --- Disposition des notes : note -> numeros de points (photo de la plaque) ---
-# Les noms de notes doivent exister dans piano.json et dans notes/ (c4.wav, c-4.wav = C#4, ...).
+# Les noms de notes doivent exister dans l'affichage (N1 = C4, N2 = C#4, ... N12 = B4) et dans notes/.
 # Pour changer quelle note est jouee par quelle zone, ne modifier QUE les noms a gauche.
 GROUPES = {
-    "C4":  [1, 5],
-    "D4":  [2, 6],
-    "E4":  [3, 8],
-    "F4":  [11, 18],
-    "G4":  [14, 21],
-    "A4":  [15, 22],
-    "B4":  [17, 23],
-    "C#4": [20, 26],
-    "D#4": [28, 34],
-    "F#4": [29, 36],
-    "G#4": [30, 37],
-    "A#4": [33, 40],
+    "C4":  [1, 5],      # N1  (meme numerotation N1..N12 que l'affichage)
+    "C#4": [2, 6],      # N2
+    "D4":  [3, 8],      # N3
+    "D#4": [11, 18],    # N4
+    "E4":  [14, 21],    # N5
+    "F4":  [15, 22],    # N6
+    "F#4": [17, 23],    # N7
+    "G4":  [20, 26],    # N8
+    "G#4": [28, 34],    # N9
+    "A4":  [32, 39],    # N10
+    "A#4": [30, 37],    # N11
+    "B4":  [33, 40],    # N12
 }
 N_POINTS = 40
 NOTE_DE = {p: note for note, pts in GROUPES.items() for p in pts}      # point (1..40) -> note
 POINTS_MORTS = [p for p in range(1, N_POINTS + 1) if p not in NOTE_DE]  # sans note : jamais retenus
+
+
+# --- Plaque : grille des points et orientation de la carte de correlation ---
+# Grille lue sur la photo : {numero de point: colonne (1..7)} pour chaque ligne (0..6). Trous et
+# piezo n'ont pas de point.
+LIGNES_GRILLE = [
+    {1: 2, 2: 3, 3: 5},
+    {4: 1, 5: 2, 6: 3, 7: 4, 8: 5, 9: 6},
+    {10: 2, 11: 3, 12: 4, 13: 5, 14: 6, 15: 7},
+    {16: 1, 17: 2, 18: 3, 19: 4, 20: 5, 21: 6, 22: 7},
+    {23: 2, 24: 3, 25: 4, 26: 5, 27: 6, 28: 7},
+    {29: 2, 30: 3, 31: 4, 32: 5, 33: 6, 34: 7},
+    {35: 1, 36: 2, 37: 3, 38: 4, 39: 5, 40: 6},
+]
+TROUS = [(0, 4), (2, 1), (5, 1)]    # (ligne, colonne) des 3 trous de la plaque
+PIEZO = (4, 1)                      # (ligne, colonne) du piezo
+# L'affichage montre la plaque en miroir puis tournee de 90 degres vers la droite (piezo en haut,
+# touches horizontales). Case (ligne, colonne) de la grille -> case (L, C) de la carte envoyee.
+def cellule(ligne, colonne):
+    return colonne - 1, 6 - ligne
+CASE_DE = {p: cellule(r, c) for r, l in enumerate(LIGNES_GRILLE) for p, c in l.items()}
+FORME_CARTE = (7, 7)
+
+
+def carte_de_correlation(S):
+    """Matrice 7 x 7 envoyee a l'affichage : score de chaque point a sa place (plaque tournee), 0 ailleurs."""
+    m = np.zeros(FORME_CARTE, dtype=np.float32)
+    for p, (i, j) in CASE_DE.items():
+        m[i, j] = S[p - 1]
+    return m
+
 
 
 class Identificateur:
@@ -192,8 +223,7 @@ def main():
                     continue
                 note, point, S = ident.identifier(fenetre)
                 latence_ms = (time.time() - t0) * 1000
-                corr = [S[0:5], S[5:10]]   # comme dans le script d'origine (le visuel est laisse a l'interface)
-                envoyer(corr, note, latence_ms)
+                envoyer(carte_de_correlation(S), note, latence_ms)
                 print(f">>> {note:<3s} (point {point:>2d}, score {S[point - 1]:.2f})   {latence_ms:.0f} ms")
         except KeyboardInterrupt:
             print("\nArret.")

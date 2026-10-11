@@ -18,7 +18,7 @@ import os
 from Protocole_et_Communication import envoyer
 
 # --- Parametres ---
-CHEMIN_BANQUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resultats_banque", "Banque_12 points.npz")
+CHEMIN_BANQUE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resultats_banque", "Banque_20261005_110835.npz")
 DEVICE_ENTREE = 1        # index du micro/piezo (C-Media USB Headphone Set, confirme avec RecordMicro.py)
 FS = 44100
 DTYPE = "float32"

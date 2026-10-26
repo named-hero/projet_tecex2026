@@ -27,13 +27,7 @@ import wave
 from pathlib import Path
 
 import numpy as np
-from PyQt6 import QtCore, QtGui, QtNetwork, QtWidgets
-
-try:
-    from PyQt6 import QtMultimedia
-except ImportError:          # son facultatif
-    QtMultimedia = None
-
+from PyQt6 import QtCore, QtGui, QtNetwork, QtWidgets, QtMultimedia
 import Protocole_et_Communication as protocole
 
 DOSSIER = Path(__file__).resolve().parent
@@ -626,8 +620,6 @@ class Fenetre(QtWidgets.QMainWindow):
 
     # --- sons ---
     def charger_sons(self):
-        if QtMultimedia is None:
-            return
         try:
             generer_sons_si_absents()
         except Exception as exc:

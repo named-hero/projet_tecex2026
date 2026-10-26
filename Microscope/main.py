@@ -8,3 +8,6 @@ def main():
     main_window = camera.CameraWindow()
     main_window.show()
     sys.exit(app.exec())
+
+if __name__ == "__main__":
+    main()

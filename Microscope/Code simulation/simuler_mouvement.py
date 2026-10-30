@@ -11,11 +11,11 @@ Il peut ensuite être analysé avec : python analyser_films.py
 Les étapes (une fonction par étape) :
     1. coefficient_diffusion : D = kB T / (6 pi eta a)  (Stokes-Einstein)
     2. simuler_trajectoire   : positions de la particule (marche aléatoire, flou de mouvement inclus)
-    3. image_psf             : tache d'Airy de la particule, photons, bruit, conversion en niveaux de gris
+    3. creer_image           : tache d'Airy de la particule, intégrée sur les pixels, conversion en niveaux de gris
     4. enregistrer le film et les vraies valeurs
 
-Modèle de signal (hypothèses, à calibrer avec le vrai montage) : le nombre de photons est
-proportionnel au volume de la particule (rayon^3), puis à la fraction de lumière collectée par l'objectif.
+La simulation ne cherche que la trajectoire d'une particule : l'image est idéale (particule claire sur
+fond noir), sans fond, sans lumière parasite, sans bruit de lecture ni bruit de photons.
 """
 import csv
 import json
@@ -35,17 +35,13 @@ EXPOSITION_S = 0.02        # temps d'exposition (s), doit être <= DT_S
 TAILLE_IMAGE_PX = 128      # l'image est carrée : TAILLE_IMAGE_PX x TAILLE_IMAGE_PX pixels
 
 # Valeurs physiques et de la caméra (rarement à changer)
-LAMBDA_UM = 0.600          # longueur d'onde d'émission (um), hypothèse : colorant orange-rouge
+LAMBDA_UM = 0.575          # longueur d'onde d'émission (um), filtre 535/575 nm
 N_EAU = 1.33               # indice de réfraction de l'eau
 T_K = 293.15               # température (K)
 ETA = 1.002e-3             # viscosité de l'eau (Pa s)
 KB = 1.380649e-23          # constante de Boltzmann (J/K)
 PIXEL_CAMERA_UM = 1.55     # taille d'un pixel de la caméra HQ (um)
-BITS = 12                  # profondeur de bits
-GAIN_E_PAR_ADU = 2.0       # électrons par niveau de gris (hypothèse)
-BRUIT_LECTURE_E = 3.0      # bruit de lecture (électrons) (hypothèse)
-FLUX_REF = 2.0e5           # photo-électrons par seconde pour a = 0.5 um et NA = 0.85 (hypothèse)
-FOND_E_PAR_S_PAR_UM2 = 50  # fond (électrons par seconde et par um^2) (hypothèse)
+INTENSITE_MAX_ADU = 60000  # le film est mis à l'échelle pour que son pixel le plus clair vaille cette valeur (16 bits)
 N_SOUS_PAS = 4             # positions calculées pendant l'exposition (pour le flou de mouvement)
 
 DOSSIER_FILMS = Path(__file__).resolve().parent / "films"
@@ -70,11 +66,6 @@ def simuler_trajectoire(D, z_max):
 
 
 # ----------------------------------------------------------------------------- 3. Image
-def efficacite_collection(na):
-    """Fraction de la lumière émise (dans toutes les directions) collectée par l'objectif."""
-    return 0.5 * (1 - np.sqrt(1 - (na / N_EAU) ** 2))
-
-
 def psf_airy(r, z, pixel_um):
     """Tache d'Airy normalisée (intégrale 1), avec défocalisation simplifiée.
 
@@ -89,13 +80,13 @@ def psf_airy(r, z, pixel_um):
     return brut * (np.pi * NA ** 2 / LAMBDA_UM ** 2) / s ** 2
 
 
-def creer_image(positions_sous, pixel_um, n_photons, fond_e):
-    """Une image du film, en niveaux de gris (0 à 2^BITS - 1).
+def creer_image(positions_sous, pixel_um):
+    """Une image idéale du film (énergie totale 1 pour une particule dans l'image), sans bruit.
 
     La tache n'est calculée que dans une fenêtre autour de la particule (la lumière loin de
-    la particule est négligeable), puis placée dans une image qui contient aussi le fond.
-    Chaque pixel reçoit un nombre de photons aléatoire (loi de Poisson), puis le bruit de
-    lecture de la caméra est ajouté.
+    la particule est négligeable), puis placée dans une image noire. La valeur d'un pixel est
+    l'intégrale de la tache sur ce pixel (sur-échantillonnage), moyennée sur les positions de
+    l'exposition (flou de mouvement).
     """
     n = TAILLE_IMAGE_PX
     centre = positions_sous.mean(axis=0)
@@ -104,7 +95,7 @@ def creer_image(positions_sous, pixel_um, n_photons, fond_e):
     demi = int(np.ceil(3 * (LAMBDA_UM / NA) / pixel_um + 3 * np.ptp(positions_sous[:, :2]) / pixel_um)) + 4
     demi = min(demi, n // 2 - 1)
     ix0, iy0 = int(round(xc)) - demi, int(round(yc)) - demi
-    attendu = np.full((n, n), fond_e)
+    image = np.zeros((n, n))
     q = int(np.clip(np.ceil(2 * pixel_um / sigma_um), 1, 6))      # sur-échantillonnage dans un pixel
     sous = ((np.arange(q) + 0.5) / q - 0.5) * pixel_um
     largeur = 2 * demi + 1
@@ -119,9 +110,8 @@ def creer_image(positions_sous, pixel_um, n_photons, fond_e):
     xs0, xs1 = max(ix0, 0), min(ix0 + largeur, n)
     ys0, ys1 = max(iy0, 0), min(iy0 + largeur, n)
     if xs1 > xs0 and ys1 > ys0:
-        attendu[ys0:ys1, xs0:xs1] += (dens * pixel_um ** 2 * n_photons)[ys0 - iy0:ys1 - iy0, xs0 - ix0:xs1 - ix0]
-    electrons = np.random.poisson(attendu) + np.random.normal(0, BRUIT_LECTURE_E, attendu.shape)
-    return np.clip(np.round(electrons / GAIN_E_PAR_ADU), 0, 2 ** BITS - 1)
+        image[ys0:ys1, xs0:xs1] += (dens * pixel_um ** 2)[ys0 - iy0:ys1 - iy0, xs0 - ix0:xs1 - ix0]
+    return image
 
 
 # ----------------------------------------------------------------------------- Programme principal
@@ -131,20 +121,18 @@ def main():
     z_max = N_EAU * LAMBDA_UM / NA ** 2
     positions = simuler_trajectoire(D, z_max)
 
-    # Photons par image : proportionnel à a^3 et à la lumière collectée (hypothèses de signal)
-    n_photons = (FLUX_REF * (RAYON_UM / 0.5) ** 3 * EXPOSITION_S * efficacite_collection(NA) / efficacite_collection(0.85))
-    fond = FOND_E_PAR_S_PAR_UM2 * pixel_um ** 2 * EXPOSITION_S * efficacite_collection(NA) / efficacite_collection(0.85)
-
     champ = TAILLE_IMAGE_PX * pixel_um
     sortie = np.any(np.abs(positions[:, :, :2].mean(axis=1)) > champ / 2)
-    images = [creer_image(p, pixel_um, n_photons, fond) for p in positions]
+    images = [creer_image(p, pixel_um) for p in positions]
+    echelle = INTENSITE_MAX_ADU / max(im.max() for im in images)     # mise à l'échelle commune à tout le film
+    images = [np.round(im * echelle) for im in images]
 
     nom = f"Film_simule_a_{RAYON_UM}um_dt_{DT_S}s_exp_{EXPOSITION_S}s_PixelSize_{pixel_um:.4g}um"
     DOSSIER_FILMS.mkdir(exist_ok=True)
     pages = [Image.fromarray(im.astype(np.uint16)) for im in images]
     pages[0].save(DOSSIER_FILMS / (nom + ".tif"), save_all=True, append_images=pages[1:])
     verite = {"rayon_um": RAYON_UM, "D_um2_s": D, "pixel_um": pixel_um, "dt_s": DT_S, "exposition_s": EXPOSITION_S,
-              "grossissement": GROSSISSEMENT, "NA": NA, "photons_par_image": n_photons}
+              "grossissement": GROSSISSEMENT, "NA": NA}
     (DOSSIER_FILMS / (nom + ".json")).write_text(json.dumps(verite, indent=2))
     with open(DOSSIER_FILMS / (nom + "_trajectoire_vraie.csv"), "w", newline="") as f:
         w = csv.writer(f)
@@ -154,7 +142,7 @@ def main():
 
     print(f"Film enregistré : {DOSSIER_FILMS / (nom + '.tif')}")
     print(f"  rayon = {RAYON_UM} um, D = {D:.4f} um^2/s, pixel = {pixel_um:.4f} um, "
-          f"champ = {champ:.1f} um, photons par image = {n_photons:.0f}")
+          f"champ = {champ:.1f} um")
     print(f"  pas moyen par image (par axe) = {np.sqrt(2 * D * DT_S):.3f} um")
     if sortie:
         print("  ATTENTION : la particule sort de l'image. Augmente TAILLE_IMAGE_PX ou le grossissement.")

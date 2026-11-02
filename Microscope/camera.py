@@ -87,12 +87,7 @@ def update_particles(particles: list[Particle], frame: NDArray[np.uint8]) -> Non
     center_x = x_min + parameters[1]
     center_y = y_min + parameters[2]
     size = max(1, round(2 * parameters[3]))
-    particles.append(
-        {
-            "pos": (round(center_x), round(center_y)),
-            "size": size,
-        }
-    )
+    particles.append(Particle((round(center_x), round(center_y)), size))
 
 
 def draw_particle_rectangles(

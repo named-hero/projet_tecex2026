@@ -7,11 +7,92 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QCloseEvent, QImage, QPixmap
 from PyQt6.QtWidgets import QLabel, QMainWindow, QMessageBox
 from numpy.typing import NDArray
+from scipy.ndimage import gaussian_filter
+from scipy.optimize import curve_fit
 
 
 class Particle(TypedDict):
     pos: tuple[int, int]
     size: int
+
+
+def gaussian_2d(
+    coordinates: tuple[NDArray[np.float64], NDArray[np.float64]],
+    amplitude: float,
+    center_x: float,
+    center_y: float,
+    sigma: float,
+    background: float,
+) -> NDArray[np.float64]:
+    x, y = coordinates
+    return amplitude * np.exp(
+        -((x - center_x) ** 2 + (y - center_y) ** 2) / (2 * sigma**2)
+    ) + background
+
+
+def update_particles(particles: list[Particle], frame: NDArray[np.uint8]) -> None:
+    particles.clear()
+
+    if frame.ndim == 2:
+        gray = frame.astype(np.float32)
+    elif frame.ndim == 3 and frame.shape[2] == 3:
+        gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY).astype(np.float32)
+    else:
+        raise ValueError("L'image caméra doit être en niveaux de gris ou RGB.")
+
+    if not gray.size:
+        raise ValueError("L'image caméra est vide.")
+
+    smoothed = gaussian_filter(gray, 1.0)
+    peak_y, peak_x = np.unravel_index(np.argmax(smoothed), smoothed.shape)
+
+    half_window = 15
+    y_min = max(peak_y - half_window, 0)
+    y_max = min(peak_y + half_window + 1, gray.shape[0])
+    x_min = max(peak_x - half_window, 0)
+    x_max = min(peak_x + half_window + 1, gray.shape[1])
+    window = gray[y_min:y_max, x_min:x_max]
+
+    background = float(np.median(window))
+    noise = float(np.median(np.abs(window - background)))
+    peak = float(smoothed[peak_y, peak_x])
+    threshold = background + max(3.0 * 1.4826 * noise, 1.0)
+    if peak <= threshold:
+        return
+
+    ys, xs = np.indices(window.shape)
+    initial = [
+        float(window.max() - background),
+        float(peak_x - x_min),
+        float(peak_y - y_min),
+        2.0,
+        background,
+    ]
+    bounds = (
+        [0, 0, 0, 0.3, -np.inf],
+        [np.inf, window.shape[1], window.shape[0], window.shape[0], np.inf],
+    )
+    try:
+        parameters, _ = curve_fit(
+            gaussian_2d,
+            (xs.ravel(), ys.ravel()),
+            window.ravel(),
+            p0=initial,
+            bounds=bounds,
+            maxfev=2000,
+        )
+    except (RuntimeError, ValueError):
+        return
+
+    center_x = x_min + parameters[1]
+    center_y = y_min + parameters[2]
+    size = max(1, round(2 * parameters[3]))
+    particles.append(
+        {
+            "pos": (round(center_x), round(center_y)),
+            "size": size,
+        }
+    )
 
 
 def draw_particle_rectangles(
@@ -61,6 +142,7 @@ class CameraWindow(QMainWindow):
             )
             return
 
+        update_particles(self.particles, frame)
         draw_particle_rectangles(frame, self.particles)
 
         height, width = frame.shape[:2]

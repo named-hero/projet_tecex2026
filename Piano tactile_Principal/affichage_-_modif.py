@@ -80,7 +80,7 @@ MONDE = QtCore.QRectF(0, 60, 1070, 1030)
 # Image de fond de la plaque (placee a cote de ce fichier). Elle est dessinee en coordonnees de la photo :
 # son coin haut-gauche est en (0, 0), comme les rectangles et les points de ZONES.
 IMAGE_PLAQUE = DOSSIER / "plaque.jpeg"
-IMAGE_DECALAGE = (-10, -30)   # (dx, dy) en unites de la photo : + = vers la droite / vers le bas a l'ecran
+IMAGE_DECALAGE = (-10, -40)   # (dx, dy) en unites de la photo : + = vers la droite / vers le bas a l'ecran
 IMAGE_ECHELLE = 1.2       # 1.0 = taille native ; >1 agrandit, <1 reduit
 IMAGE_ROTATION = 0         # rotation de l'image en degres (0, 90, 180, 270 ou autre) ; + = sens horaire a l'ecran
 

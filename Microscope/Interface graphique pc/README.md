@@ -1,19 +1,14 @@
-# TCR sans bonus : acquisition sur le Raspberry Pi, traitement sur le PC
+# Interface graphique PC : traitement des films
 
-## Répartition
-| Où | Programme | Rôle |
-|---|---|---|
-| Raspberry Pi | `interface_acquisition.py` | Pilote la caméra : objectif, exposition, Δt, durée, gain. Image en direct avec temps, échelle et conditions. Enregistre le film TIFF (+ JSON, + AVI annoté facultatif). Première version, à reprendre par Brian. |
-| PC | `interface_traitement.py` | Part du film TIFF : lecteur, choix des particules, suivi, rayon moyen et incertitude, vidéo annotée avec trajectoires. |
+Cette interface part d'un film TIFF enregistré avec l'interface d'acquisition du Raspberry Pi (dossier `Interface graphique Rasbery PY`). Elle suit les particules, calcule le rayon moyen et son incertitude, et rejoue le film avec les trajectoires.
 
 ## Fichiers
 - `interface_traitement.py` : interface du PC (PySide6).
 - `analyse_equipe.py` : détection, suivi, correction du mouvement collectif, tri des particules, MSD, rayon.
 - `annotation.py` : temps (s), échelle (µm/pixel), conditions, dessinés sur chaque image.
-- `acquisition.py`, `interface_acquisition.py` : acquisition (Pi).
 
-## Lancer le traitement (PC)
-    cd "TCR sans bonus"
+## Lancer le traitement
+    cd "Interface graphique pc"
     python3 interface_traitement.py
 Dépendances : PySide6 numpy scipy opencv-python Pillow.
 
@@ -25,7 +20,7 @@ Dépendances : PySide6 numpy scipy opencv-python Pillow.
    - *La plus lumineuse* : tache la plus lumineuse de l'image affichée (souvent la plus grosse, peu représentative).
    - *Toutes les particules, triées automatiquement* : rayon moyen de l'échantillon.
 4. **Correction du mouvement collectif** : case à cocher sous le choix des particules (cochée par défaut). Les particules dérivent ensemble (courant, vibrations) ; la correction retire cette dérive commune, sans elle le rayon est sous-estimé. Décochée, l'analyse se fait sans correction.
-5. **Analyser.** Le résultat s'ouvre dans l'onglet Résultats (rayon moyen ± incertitude, tableau par particule avec intensité, D, rayon, incertitude et erreur de localisation, MSD moyen avec axes et barres d'erreur, rayon de chaque particule ou histogramme au-delà de 20 particules).
+5. **Analyser.** Le résultat s'ouvre dans l'onglet Résultats : rayon moyen ± incertitude, tableau par particule (intensité, D, rayon, incertitude), MSD moyen avec axes et barres d'erreur, rayon de chaque particule (ou histogramme au-delà de 20 particules).
 6. **Vidéo annotée** : le film rejoué avec les trajectoires (rouge = particule écartée). Zoom avec le curseur ou la molette, déplacement en glissant la souris, ou « Suivre » une particule (zoom automatique x5). La barre d'échelle suit le zoom. Bouton d'export AVI (image entière).
 
 ## Tri automatique (mode « toutes les particules »)
@@ -43,16 +38,19 @@ Quand on choisit des zones (ou la plus lumineuse), l'interface calcule aussi, à
 ## Colonnes du tableau
 - Intensité : contraste médian en % de l'intensité de référence du film.
 - Incertitude (± nm) : incertitude statistique sur le rayon de la particule, estimée sur 5 blocs de sa trajectoire.
+
 Tous les paramètres de l'analyse sont affichés sur les graphiques (modèle MSD = 4Dτ + c, D, c, Δt, délais ajustés, nombre de particules).
 
 ## Incertitude
-- Rayon moyen : a = kB T / (6 pi eta D moyen), D moyen = moyenne des D des particules utilisées.
-- Incertitude statistique : écart-type de la moyenne de D entre particules (3 particules ou plus), convertie en rayon. Pour 1 ou 2 particules : dispersion de D sur 5 blocs de chaque trajectoire.
+- Rayon moyen : a = kB T / (6 pi eta D moyen), avec T = 293,15 K et eta = 1,002 mPa s. D moyen est la moyenne des D des particules utilisées.
+- Incertitude statistique : incertitude type de la moyenne de D entre particules (3 particules ou plus), convertie en rayon :
+
+      s(D moyen) = racine( somme(i = 1 à n) (Di - D moyen)^2 / (n (n - 1)) )
+      D moyen = (1/n) somme(i = 1 à n) Di
+
+  Pour 1 ou 2 particules : dispersion de D sur 5 blocs de chaque trajectoire.
 - La dispersion entre particules (1,48 x écart absolu médian des rayons) est affichée à part.
-- Une incertitude analytique (propagation des formules) n'est pas calculée : décision en attente.
 
 ## Limites connues
-- Tout est testé sur un seul film réel (film-5s_03) et en simulation, dans un environnement sans écran. À essayer sur le PC.
-- L'échelle µm/pixel (modifiable dans Paramètres) reste à confirmer avec la règle graduée (binning du mode 1332x990 à vérifier).
+- L'échelle µm/pixel (modifiable dans Paramètres) reste à confirmer avec la règle graduée (binning du mode 1332x990 à vérifier). Le rayon varie comme 1/p^2.
 - Le suivi suppose des particules bien séparées. Deux particules à moins de 16 pixels peuvent échanger leur trajectoire.
-- Interface d'acquisition jamais testée sur le vrai Pi.

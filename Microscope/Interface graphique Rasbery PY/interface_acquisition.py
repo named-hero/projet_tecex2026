@@ -243,6 +243,7 @@ class EnregistrementWorker(QObject):
     progression = pyqtSignal(int, int)
     termine = pyqtSignal(dict)
     erreur = pyqtSignal(str)
+    etape = pyqtSignal(str)
 
     def __init__(self, camera, p):
         super().__init__()
@@ -267,6 +268,7 @@ class EnregistrementWorker(QObject):
             if i % max(1, n // 20) == 0:
                 self.progression.emit(i + 1, n)
         self.progression.emit(n, n)
+        self.etape.emit("Images capturées. Écriture du fichier TIFF (peut prendre quelques secondes)…")
         intervalles = np.diff(np.array(instants)) / 1e9
         manquantes = int(np.sum(intervalles > 1.5 * p["dt_s"]))
         base = p["base"]
@@ -637,6 +639,7 @@ class CameraWindow(QMainWindow):
         self.worker = EnregistrementWorker(self.camera, params)
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
+        self.worker.etape.connect(self.etat.setText)
         self.worker.progression.connect(lambda i, n_: self.barre.setValue(int(100 * i / n_)))
         self.worker.termine.connect(self._termine)
         self.worker.erreur.connect(self._erreur)
@@ -654,21 +657,33 @@ class CameraWindow(QMainWindow):
             texte += "\n⚠ Des images ont été perdues : augmentez Δt ou fermez les autres programmes."
         self.etat.setText(texte + "\nL'aperçu en direct reprend.")
         self.barre.setValue(100)
+        self._reprendre()
 
     @pyqtSlot(str)
     def _erreur(self, message):
         self.etat.setText("Échec de l'enregistrement.")
+        self._reprendre()
         QMessageBox.warning(self, "Erreur d'enregistrement", message)
+
+    def _reprendre(self):
+        """Fin de l'enregistrement : l'aperçu reprend. Appelée dès que le worker a fini, quoi qu'il arrive ensuite."""
+        self.fige = False
+        self.dernier_instant = None
+        try:
+            self._reglages_modifies()
+        except Exception as exc:                  # ne doit jamais empêcher la reprise de l'aperçu
+            self.etat.setText(f"{self.etat.text()}\nRéglages : {exc}")
+        self.bouton.setEnabled(self.camera is not None)
+        self.timer.start(RAFRAICHISSEMENT_MS)
 
     @pyqtSlot()
     def _nettoyer(self):
-        self.worker.deleteLater()
-        self.thread.deleteLater()
+        if self.worker is not None:
+            self.worker.deleteLater()
+        if self.thread is not None:
+            self.thread.deleteLater()
         self.thread = None
         self.worker = None
-        self.fige = False                        # l'aperçu reprend
-        self._reglages_modifies()
-        self.timer.start(RAFRAICHISSEMENT_MS)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self.timer.stop()

@@ -37,9 +37,9 @@ DOSSIER_FILMS = Path(__file__).resolve().parent / "films_acquis"
 TAILLE = (1332, 990)        # taille des images (largeur, hauteur) : correspond à un mode du capteur IMX477
                             # (autre mode possible : (2028, 1520), champ plus grand mais moins d'images/s)
 PIXEL_CAMERA_UM = 1.55      # taille d'un pixel du capteur (um)
-FACTEUR_MODE = 2.0          # TODO : pixels du capteur regroupés par pixel d'image (2 si le mode est "binné 2x2")
+FACTEUR_MODE = 2.4          # calé sur la règle graduée : objectif 20X -> 0,186 um/pixel (1,55 x 2,4 / 20)
 OBJECTIF_M = 20             # grossissement de l'objectif   TODO : valeur réelle
-OBJECTIF_NA = 0.45          # ouverture numérique           TODO : valeur réelle
+OBJECTIF_NA = 0.40          # ouverture numérique (objectif 20X)
 DT_S = 0.05                 # temps entre deux images (s)
 EXPOSITION_S = 0.02         # temps d'exposition (s), doit être <= dt
 DUREE_S = 30.0              # durée d'un film (s)

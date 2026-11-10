@@ -33,5 +33,5 @@ Le nom du .tif contient Δt, exposition et taille de pixel : l'interface de trai
 
 ## Limites connues
 - Jamais testée sur le vrai Raspberry Pi (testée en simulation seulement). À vérifier au labo : aucune image manquante, cadence réelle égale à celle demandée, rafraîchissement de l'aperçu (50 ms).
-- L'échelle µm/pixel et le facteur du mode 1332x990 sont à confirmer avec la règle graduée.
+- L'échelle par défaut (0,186 µm/pixel pour l'objectif 20X, NA 0,40) a été calée sur la règle graduée. Elle est à confirmer en mode film (1332x990) : 100 µm doivent mesurer environ 538 pixels.
 - Dans `camera.py` de Brian, la détection plante : `Particle((x, y), size)` doit s'écrire `Particle(pos=(x, y), size=size)`. Corrigé dans `interface_acquisition.py`.

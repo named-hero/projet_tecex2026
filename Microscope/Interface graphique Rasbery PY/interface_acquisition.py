@@ -45,12 +45,12 @@ import acquisition as A          # nom des fichiers, numérotation, écriture du
 
 TAILLE = A.TAILLE                # (largeur, hauteur) du mode du capteur
 PIXEL_CAMERA_UM = A.PIXEL_CAMERA_UM
-FACTEUR_MODE = A.FACTEUR_MODE    # pixels du capteur regroupés par pixel d'image (hypothèse à vérifier)
+FACTEUR_MODE = 2.4    # calé sur la règle graduée : objectif 20X -> 0,186 µm/pixel (1,55 x 2,4 / 20)
 OBJECTIFS = [
     "4X, NA 0,10", "4X, NA 0,13", "10X, NA 0,25", "10X, NA 0,30", "20X, NA 0,40", "20X, NA 0,45",
     "20X, NA 0,50", "40X, NA 0,65", "40X, NA 0,70", "40X, NA 0,75", "60X, NA 0,85",
 ]
-OBJECTIF_DEFAUT = "20X, NA 0,45"
+OBJECTIF_DEFAUT = "20X, NA 0,40"
 RAFRAICHISSEMENT_MS = 50         # l'aperçu se rafraîchit environ 20 fois par seconde (ménage le Raspberry Pi)
 
 # Même style que l'interface de traitement (fond sombre, boutons bleus, contours gris clair)

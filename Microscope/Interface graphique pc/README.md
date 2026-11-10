@@ -23,6 +23,16 @@ Dépendances : PySide6 numpy scipy opencv-python Pillow.
 5. **Analyser.** Le résultat s'ouvre dans l'onglet Résultats : rayon moyen ± incertitude, tableau par particule (intensité, D, rayon, incertitude), MSD moyen avec axes et barres d'erreur, rayon de chaque particule (ou histogramme au-delà de 20 particules).
 6. **Vidéo annotée** : le film rejoué avec les trajectoires (rouge = particule écartée). Zoom avec le curseur ou la molette, déplacement en glissant la souris, ou « Suivre » une particule (zoom automatique x5). La barre d'échelle suit le zoom. Bouton d'export AVI (image entière).
 
+## Particules immobiles : taille estimée par la largeur des taches
+Quand les particules sont collées à la lame (aucun mouvement brownien mesurable : D négatif ou rayon apparent de plusieurs dizaines de µm), le rayon de Stokes-Einstein n'a pas de sens. Dans l'onglet Film, cocher « Particules immobiles » : l'analyse estime alors le diamètre à partir de la largeur des taches. Le résultat s'affiche dans l'onglet « Taille des taches ».
+1. Les particules suivies sur 60 % du film sont triées (intensité, isolement, valeurs aberrantes de la largeur).
+2. La largeur de la tache (écart-type σ d'un ajustement gaussien) est mesurée sur toutes les images de chaque particule, dans la direction y (la vibration étire les taches en x). Chaque particule donne la moyenne de ses images.
+3. Moyenne sur les particules, avec l'incertitude type de la moyenne : racine( somme (σi - σ moyen)^2 / (n (n - 1)) ).
+4. Conversion en diamètre par le calcul de l'optique, en supposant une bille uniformément fluorescente (σ bille = d / 4,47) : σ^2 = σ optique^2 + (d / 4,47)^2, avec σ optique = 0,21 x λ / NA (NA tirée de l'objectif choisi dans Paramètres, λ à régler) plus le terme de pixel (pixel^2 / 12).
+5. Un MSD moyen jusqu'aux grands délais, après retrait de la vibration commune (ajustée sur chaque particule avec des retards de ± 2 images), montre si les particules sont bien immobiles (D apparent très inférieur à celui d'une bille libre).
+
+Limites : le diamètre est une estimation, pas une mesure. Il dépend de la mise au point, de NA, de λ et du modèle de bille.
+
 ## Tri automatique (mode « toutes les particules »)
 Une particule est utilisée si :
 1. elle est suivie sur au moins 60 % du film ;
@@ -52,5 +62,5 @@ Tous les paramètres de l'analyse sont affichés sur les graphiques (modèle MSD
 - La dispersion entre particules (1,48 x écart absolu médian des rayons) est affichée à part.
 
 ## Limites connues
-- L'échelle µm/pixel (modifiable dans Paramètres) reste à confirmer avec la règle graduée (binning du mode 1332x990 à vérifier). Le rayon varie comme 1/p^2.
+- L'échelle µm/pixel (modifiable dans Paramètres) a été mesurée à la règle graduée : 0,186 µm/pixel (objectif 20X, NA 0,40, mode 1332x990). Le rayon varie comme 1/p^2 : toute erreur d'échelle est doublée sur le rayon.
 - Le suivi suppose des particules bien séparées. Deux particules à moins de 16 pixels peuvent échanger leur trajectoire.

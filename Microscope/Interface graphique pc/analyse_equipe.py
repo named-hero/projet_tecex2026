@@ -27,6 +27,8 @@ Utilisation seule (sans interface) :
     python3 analyse_equipe.py film.tif                       tache la plus lumineuse
     python3 analyse_equipe.py film.tif --zone X0 Y0 X1 Y1    zone rectangulaire (image 0), répétable
     python3 analyse_equipe.py film.tif --echantillon         toutes les particules triées
+    python3 analyse_equipe.py film.tif --immobiles [--na 0.4 --lambda-nm 575]
+                                                             particules immobiles : taille par la largeur des taches
 """
 import argparse
 import os
@@ -459,7 +461,9 @@ def analyser_video(video_path, pixel_um, dt_s, config=None):
             valides = [c for c in valides if not c["raison"]]
         if not valides:
             raisons = sorted({c["raison"] for c in candidats})
-            raise ValueError("Aucune particule utilisable : " + "; ".join(raisons))
+            raise ValueError("Aucune particule utilisable : " + "; ".join(raisons) +
+                             (".\n\nParticules immobiles ? Cochez « Particules immobiles » dans l'onglet Film."
+                              if any("D négatif" in r_ for r_ in raisons) else ""))
 
         # --- moyenne sur toutes les particules exploitables du film (mêmes seuils), pour situer le choix de l'utilisateur
         film_entier = None
@@ -567,6 +571,247 @@ def analyser_echantillon(video_path, pixel_um, dt_s, config=None):
     return analyser_video(video_path, pixel_um, dt_s, dict(config or {}, mode="echantillon"))
 
 
+# ----------------------------------------------------------------------------- Particules immobiles : taille des taches
+FACTEUR_BILLE = 1.0 / np.sqrt(20.0)   # écart-type de la tache d'une bille uniformément fluorescente : sigma = d x FACTEUR_BILLE
+FACTEUR_OPTIQUE = 0.21                # écart-type de la réponse de l'optique : FACTEUR_OPTIQUE x lambda / NA
+DEMI_FENETRE_LARGEUR = 12             # demi-largeur (pixels) de la fenêtre d'ajustement de la tache
+SIGMA_MAX_PX = 9.0                    # un ajustement dont une largeur atteint cette limite est rejeté
+RAYON_IMMOBILE_NM = 10000.0           # rayon apparent (Stokes-Einstein) au-delà duquel les particules sont dites immobiles
+N_LAGS_IMMOBILES = 60                 # délais du MSD moyen (la diffusion lente n'apparaît qu'aux grands délais)
+
+
+def gaussienne_elliptique(coord, amplitude, x0, y0, sx, sy, fond):
+    x, y = coord
+    return amplitude * np.exp(-((x - x0) ** 2 / (2 * sx ** 2) + (y - y0) ** 2 / (2 * sy ** 2))) + fond
+
+
+def largeur_tache(image, x, y):
+    """Écarts-types (sigma_x, sigma_y) en pixels de la tache centrée près de (x, y) ; None si l'ajustement est impossible."""
+    h, w = image.shape
+    xi, yi, d = int(round(x)), int(round(y)), DEMI_FENETRE_LARGEUR
+    if xi - d < 0 or yi - d < 0 or xi + d + 1 > w or yi + d + 1 > h:
+        return None
+    fen = image[yi - d:yi + d + 1, xi - d:xi + d + 1].astype(np.float64)
+    if fen.max() >= 254:                       # saturation : la largeur serait faussée
+        return None
+    fond = float(np.median(fen))
+    ys, xs = np.indices(fen.shape)
+    try:
+        p, _ = curve_fit(gaussienne_elliptique, (xs.ravel(), ys.ravel()), fen.ravel(),
+                         p0=[fen.max() - fond, d, d, 3.0, 3.0, fond],
+                         bounds=([0, 0, 0, 0.8, 0.8, -np.inf], [np.inf, 2 * d, 2 * d, SIGMA_MAX_PX, SIGMA_MAX_PX, np.inf]),
+                         maxfev=600)
+    except (RuntimeError, ValueError):
+        return None
+    sx, sy = abs(p[3]), abs(p[4])
+    if max(sx, sy) >= SIGMA_MAX_PX - 0.05 or min(sx, sy) <= 0.85:
+        return None
+    return float(sx), float(sy)
+
+
+def _mesurer_largeurs(film, champ, seuil, isolement, progression, p0, p1):
+    """Largeur de la tache de chaque particule suivie sur 60 % du film, mesurée sur TOUTES les images de sa trajectoire."""
+    longues = champ["longues"]
+    if len(longues) < 3:
+        raise ValueError(f"Seulement {len(longues)} particules suivies sur {int(FRACTION_LONGUE * 100)} % du film : "
+                         "il en faut au moins 3 pour estimer la taille des taches.")
+    ref = intensite_reference(champ)
+    cand = [dict(id=f"particule_{j}", piste=p, frames=p["debut"] + np.arange(len(p["pos"])), pos=np.array(p["pos"]),
+                 sx=[], sy=[]) for j, p in enumerate(longues, start=1)]
+    par_image = {}
+    for c in cand:
+        for f, (x, y) in zip(c["frames"], c["pos"]):
+            par_image.setdefault(int(f), []).append((c, x, y))
+    ordre = sorted(par_image)
+    for k, f in enumerate(ordre):
+        im = film.image(f)
+        for c, x, y in par_image[f]:
+            r = largeur_tache(im, x, y)
+            if r is not None:
+                c["sx"].append(r[0])
+                c["sy"].append(r[1])
+        if k % 5 == 0 or k == len(ordre) - 1:
+            progression(int(p0 + (p1 - p0) * (k + 1) / len(ordre)), "Mesure de la largeur des taches (toutes les images)")
+    for c in cand:
+        c["I"] = float(np.median(c["piste"]["I"]))
+        c["I_rel"] = c["I"] / ref if ref else None
+        c["voisin"] = distance_au_plus_proche(champ, c["piste"])
+        c["n_fit"] = len(c["sy"])
+        c["raison"] = ""
+        if c["I_rel"] is not None and c["I_rel"] < seuil:
+            c["raison"] = "intensité trop faible (hors focus)"
+        elif c["voisin"] < isolement:
+            c["raison"] = "chevauchement (autre particule trop proche)"
+        elif c["n_fit"] < 0.5 * len(c["frames"]):
+            c["raison"] = "ajustement impossible (tache saturée ou déformée)"
+    return cand
+
+
+def _erreur_type(valeurs):
+    """Incertitude type de la moyenne : racine( somme (xi - x_moy)^2 / (n (n - 1)) )."""
+    v = np.asarray(valeurs, dtype=float)
+    n = len(v)
+    return float(np.sqrt(np.sum((v - v.mean()) ** 2) / (n * (n - 1)))) if n >= 2 else float("nan")
+
+
+def _largeur_moyenne(cand, pixel_um, rejet=REJET_SIGMA):
+    """Moyenne des largeurs des particules utilisées (chaque particule : moyenne sur ses images).
+
+    Les largeurs très éloignées de la médiane (plus de `rejet` écarts absolus médians : doublets, agrégats) sont écartées."""
+    for c in cand:
+        if c["n_fit"] >= 2:
+            c["sy_um"], c["sx_um"] = float(np.mean(c["sy"])) * pixel_um, float(np.mean(c["sx"])) * pixel_um
+            c["sy_inc_um"] = float(np.std(c["sy"], ddof=1) / np.sqrt(c["n_fit"])) * pixel_um
+            c["sx_inc_um"] = float(np.std(c["sx"], ddof=1) / np.sqrt(c["n_fit"])) * pixel_um
+        else:
+            c["sy_um"] = c["sx_um"] = c["sy_inc_um"] = c["sx_inc_um"] = float("nan")
+    ok = [c for c in cand if not c["raison"]]
+    if rejet > 0 and len(ok) >= 5:
+        v = np.array([c["sy_um"] for c in ok])
+        med = float(np.median(v))
+        mad = max(1.4826 * float(np.median(np.abs(v - med))), 1e-9)
+        for c in ok:
+            if abs(c["sy_um"] - med) > rejet * mad:
+                c["raison"] = "valeur aberrante (largeur trop éloignée de la médiane)"
+        ok = [c for c in ok if not c["raison"]]
+    if not ok:
+        raise ValueError("Aucune particule utilisable : " + "; ".join(sorted({c["raison"] for c in cand})))
+    sy = np.array([c["sy_um"] for c in ok])
+    sx = np.array([c["sx_um"] for c in ok])
+    return ok, float(sy.mean()), _erreur_type(sy), float(sx.mean()), _erreur_type(sx)
+
+
+def _msd_residuel(champ, ok, pixel_um, dt_s):
+    """MSD moyen des particules utilisées après retrait de la vibration commune, jusqu'aux grands délais.
+
+    Le mouvement commun (déplacement médian des particules suivies) est ajusté sur chaque particule avec des retards
+    de -2 à +2 images : cela absorbe la vibration (amplitude et phase propres à chaque particule) mais pas un mouvement
+    brownien, indépendant d'une particule à l'autre."""
+    n = champ["n"]
+    refs = champ["longues"]
+    pas_ref = np.full((len(refs), n - 1, 2), np.nan)
+    for k, p in enumerate(refs):
+        pos = np.array(p["pos"], float)
+        pas_ref[k, p["debut"]:p["debut"] + len(pos) - 1] = np.diff(pos, axis=0)
+    with np.errstate(all="ignore"):
+        col = np.nanmedian(pas_ref, axis=0)
+    mauvais = np.isnan(col[:, 0])
+    for s in (-2, -1, 1, 2):
+        mauvais = mauvais | np.roll(mauvais, s)
+    col = np.nan_to_num(col)
+    tous = []
+    for c in ok:
+        pos = np.array(c["pos"], float)
+        pas = np.full((n - 1, 2), np.nan)
+        pas[c["frames"][0]:c["frames"][0] + len(pos) - 1] = np.diff(pos, axis=0)
+        v = ~np.isnan(pas[:, 0]) & ~mauvais
+        if v.sum() < 30:
+            continue
+        res = np.zeros_like(pas)
+        for j in (0, 1):
+            X = np.stack([np.roll(col[:, j], s) for s in range(-2, 3)], axis=1)
+            coef, *_ = np.linalg.lstsq(X[v], pas[v, j], rcond=None)
+            res[:, j] = np.where(v, pas[:, j] - X @ coef, 0.0)
+        traj = np.vstack([[0.0, 0.0], np.cumsum(res, axis=0)]) * pixel_um
+        nl = min(N_LAGS_IMMOBILES, len(traj) // 3)
+        tous.append([np.mean(np.sum((traj[k:] - traj[:-k]) ** 2, axis=1)) for k in range(1, nl + 1)])
+    if len(tous) < 3:
+        return None
+    nl = min(len(t) for t in tous)
+    M = np.array([t[:nl] for t in tous])
+    moy = M.mean(axis=0)
+    err = M.std(axis=0, ddof=1) / np.sqrt(len(M))
+    lag = np.arange(1, nl + 1) * dt_s
+    debut = max(1, nl // 6)                       # ajustement linéaire MSD = 4 D t + c sur les grands délais
+    pente, ordonnee = np.polyfit(lag[debut:], moy[debut:], 1)
+    return dict(lag=lag, msd=moy, err=err, D=float(pente / 4), c=float(ordonnee), debut=debut, n=len(M))
+
+
+def _diametre_calcul(s_um, s_inc, na, lambda_nm, pixel_um):
+    """Diamètre par le calcul de l'optique : s^2 = s_optique^2 + (d x FACTEUR_BILLE)^2."""
+    s_opt = FACTEUR_OPTIQUE * (lambda_nm / 1000.0) / na
+    s_instr2 = s_opt ** 2 + pixel_um ** 2 / 12.0
+    delta = s_um ** 2 - s_instr2
+    return _diametre(delta, 2 * s_um * s_inc), s_opt, s_instr2
+
+
+def _diametre(delta, inc_delta):
+    """d = sqrt(delta) / FACTEUR_BILLE avec delta = s^2 - s_instrument^2 ; (d, incertitude)."""
+    if delta <= 0:
+        return float("nan"), float("nan")
+    d = np.sqrt(delta) / FACTEUR_BILLE
+    return float(d), float(inc_delta / (2 * np.sqrt(delta)) / FACTEUR_BILLE) if np.isfinite(inc_delta) else float("nan")
+
+
+def analyser_immobiles(video_path, pixel_um, dt_s, config=None):
+    """Particules immobiles (collées à la lame) : le mouvement brownien n'est pas mesurable, la taille est estimée
+    par la largeur des taches. config : na, lambda_nm, rejet_sigma, seuil_intensite,
+    isolement_px, progression. Retourne {"trajectories": ..., "results": ...} (results["mode"] = "immobiles")."""
+    config = dict(config or {})
+    progression = config.get("progression") or (lambda p, t: None)
+    seuil = float(config.get("seuil_intensite", SEUIL_INTENSITE))
+    isolement = float(config.get("isolement_px", ISOLEMENT_PX))
+    rejet = float(config.get("rejet_sigma", REJET_SIGMA))
+    na = float(config.get("na", 0.40))
+    lam = float(config.get("lambda_nm", 575.0))
+    film = Film(video_path)
+    notes = []
+    try:
+        champ = calculer_champ(film, lambda p, t: progression(int(0.3 * p), t))
+        cand = _mesurer_largeurs(film, champ, seuil, isolement, progression, 30, 80)
+        ok, sy, sy_inc, sx, sx_inc = _largeur_moyenne(cand, pixel_um, rejet)
+        progression(82, "Recherche d'un mouvement résiduel")
+        mv = _msd_residuel(champ, ok, pixel_um, dt_s)
+    finally:
+        film.fermer()
+
+    (d_calc, d_calc_inc), s_opt, s_instr2 = _diametre_calcul(sy, sy_inc, na, lam, pixel_um)
+    plage = []
+    for fac in (0.85, 1.15):                         # sensibilité à lambda / NA (+-15 %)
+        plage.append(_diametre_calcul(sy, sy_inc, na / fac, lam, pixel_um)[0][0])
+
+    immobile = None
+    if mv is not None:
+        a_app = rayon_nm(mv["D"]) if mv["D"] > 0 else float("inf")
+        immobile = bool(a_app > RAYON_IMMOBILE_NM)
+        notes.append(f"{'Particules immobiles' if immobile else 'Particules mobiles'} : D apparent = {mv['D']:.4f} µm²/s.")
+    if not np.isfinite(d_calc):
+        notes.append(f"σ mesuré ({sy * 1000:.0f} nm) inférieur à σ optique ({s_opt * 1000:.0f} nm) : vérifier NA et λ.")
+    courtes = {"intensité trop faible (hors focus)": "hors focus", "chevauchement (autre particule trop proche)": "chevauchement",
+               "valeur aberrante (largeur trop éloignée de la médiane)": "largeur aberrante",
+               "ajustement impossible (tache saturée ou déformée)": "ajustement impossible"}
+    bilan = {}
+    for c in cand:
+        if c["raison"]:
+            bilan[courtes.get(c["raison"], c["raison"])] = bilan.get(courtes.get(c["raison"], c["raison"]), 0) + 1
+    for r_, k in sorted(bilan.items()):
+        notes.append(f"{k} écartée(s) : {r_}.")
+    progression(100, "Terminé")
+    return {
+        "trajectories": {c["id"]: [(int(k), float(x), float(y)) for k, (x, y) in zip(c["frames"], c["pos"])] for c in cand},
+        "results": {
+            "mode": "immobiles", "particles": len(ok), "n_suivies": len(cand), "n_ecartees": len(cand) - len(ok),
+            "pixel_um": float(pixel_um), "dt_s": float(dt_s),
+            "sigma_y_um": sy, "sigma_y_inc_um": sy_inc, "sigma_x_um": sx, "sigma_x_inc_um": sx_inc,
+            "na": na, "lambda_nm": lam, "sigma_optique_um": float(s_opt),
+            "d_calcul_um": d_calc, "d_calcul_inc_um": d_calc_inc, "d_calcul_plage_um": [float(p_) for p_ in plage],
+            "immobile": immobile,
+            "D_app_um2_s": mv["D"] if mv else float("nan"),
+            "rayon_app_nm": (rayon_nm(mv["D"]) if mv and mv["D"] > 0 else float("nan")),
+            "msd_lag_s": [float(v) for v in mv["lag"]] if mv else [],
+            "msd_um2": [float(v) for v in mv["msd"]] if mv else [],
+            "msd_erreur_um2": [float(v) for v in mv["err"]] if mv else [],
+            "msd_c_um2": mv["c"] if mv else float("nan"), "msd_debut_fit": mv["debut"] if mv else 0,
+            "notes": notes,
+            "particules": [
+                {"id": c["id"], "statut": "utilisée" if not c["raison"] else "écartée", "raison": c["raison"],
+                 "intensite_rel": c["I_rel"], "n_images": int(len(c["frames"])), "n_ajustements": int(c["n_fit"]),
+                 "sigma_y_um": c["sy_um"], "sigma_y_inc_um": c["sy_inc_um"], "sigma_x_um": c["sx_um"],
+                 "voisin_px": c["voisin"]} for c in cand],
+        },
+    }
+
+
 def main():
     p = argparse.ArgumentParser(description="Analyse des particules d'un film TIFF.")
     p.add_argument("film")
@@ -575,12 +820,23 @@ def main():
     p.add_argument("--image", type=int, default=0, help="image où les zones sont tracées")
     p.add_argument("--sans-correction", action="store_true", help="ne pas corriger le mouvement collectif")
     p.add_argument("--echantillon", action="store_true", help="toutes les particules, triées automatiquement")
+    p.add_argument("--immobiles", action="store_true", help="particules immobiles : taille estimée par la largeur des taches")
+    p.add_argument("--na", type=float, default=0.40, help="ouverture numérique de l'objectif (--immobiles)")
+    p.add_argument("--lambda-nm", type=float, default=575.0, help="longueur d'onde d'émission en nm (--immobiles)")
     p.add_argument("--seuil", type=float, default=SEUIL_INTENSITE, help="seuil d'intensité (fraction de la référence)")
     p.add_argument("--rejet", type=float, default=REJET_SIGMA, help="rejet des aberrantes (écarts absolus médians, 0 = non)")
     a = p.parse_args()
     pixel_um, dt_s = parametres_du_nom(Path(a.film).name)
     if not (pixel_um and dt_s):
         raise SystemExit("Le nom du fichier doit contenir dt_...s et PixelSize_...um.")
+    if a.immobiles:
+        cfg = {"na": a.na, "lambda_nm": a.lambda_nm, "seuil_intensite": a.seuil, "rejet_sigma": a.rejet}
+        r = analyser_immobiles(a.film, pixel_um, dt_s, cfg)["results"]
+        print(f"Largeur (y) = {r['sigma_y_um'] * 1000:.0f} +/- {r['sigma_y_inc_um'] * 1000:.0f} nm sur {r['particles']} particules")
+        print(f"Diamètre (NA {r['na']}, {r['lambda_nm']:.0f} nm) : {r['d_calcul_um']:.2f} +/- {r['d_calcul_inc_um']:.2f} µm")
+        for n in r["notes"]:
+            print("Note :", n)
+        return
     cfg = {"image_depart": a.image, "corriger_derive": False if a.sans_correction else "auto",
            "seuil_intensite": a.seuil, "rejet_sigma": a.rejet}
     if a.echantillon:

@@ -5,9 +5,9 @@ l'échelle spatiale en µm/pixel et les conditions d'acquisition (grossissement,
 fréquence d'acquisition, profondeur de bit). Ce module dessine ces informations et écrit une vidéo AVI.
 
 Utilisation en ligne de commande (PC ou Raspberry Pi) :
-    python3 annotation.py film.tif --objectif "20X, NA 0,45"
+    python3 annotation.py film.tif --objectif "20X, NA 0,40"
 Les valeurs de Δt, d'exposition et de taille de pixel sont lues dans le nom du fichier
-(ex. film_01_dt_0.02s_exp_0.018s_PixelSize_0.155um_Mono_8bit.tif).
+(ex. film_01_dt_0.02s_exp_0.018s_PixelSize_0.186um_Mono_8bit.tif).
 """
 import argparse
 import re
@@ -117,7 +117,7 @@ def annoter_film(chemin_tif, sortie_avi, pixel_um, dt_s, exposition_s, objectif,
 def main():
     p = argparse.ArgumentParser(description="Ajoute temps, échelle et conditions d'acquisition à un film TIFF.")
     p.add_argument("film")
-    p.add_argument("--objectif", default="20X, NA 0,45", help="texte affiché, ex. \"20X, NA 0,45\"")
+    p.add_argument("--objectif", default="20X, NA 0,40", help="texte affiché, ex. \"20X, NA 0,40\"")
     p.add_argument("--dt", type=float)
     p.add_argument("--exposition", type=float, help="en secondes")
     p.add_argument("--pixel", type=float, help="en um/pixel")

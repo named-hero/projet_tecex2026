@@ -5,6 +5,8 @@ Onglets :
                         zones rectangulaires tracées à la souris, tache la plus lumineuse, ou toutes les particules
                         triées automatiquement (seuil d'intensité, chevauchements, valeurs aberrantes)
     Résultats           rayon moyen et incertitude, tableau par particule, MSD moyen, rayons par particule
+    Taille des taches   cas des particules immobiles (collées à la lame) : le mouvement brownien n'est pas mesurable, le
+                        diamètre est estimé par la largeur des taches (calcul de l'optique ou film de référence)
     Vidéo annotée       le film rejoué avec les trajectoires calculées, zoom et déplacement dans l'image, AVI
     Paramètres          conditions d'acquisition (modifiables), échelle µm/pixel, réglages du tri
 
@@ -33,7 +35,7 @@ import analyse_equipe
 
 OBJECTIFS = ["4X, NA 0,10", "4X, NA 0,13", "10X, NA 0,25", "10X, NA 0,30", "20X, NA 0,40", "20X, NA 0,45",
              "20X, NA 0,50", "40X, NA 0,65", "40X, NA 0,70", "40X, NA 0,75", "60X, NA 0,85"]
-OBJECTIF_PAR_DEFAUT = "20X, NA 0,45"     # le plus probable, modifiable dans Paramètres
+OBJECTIF_PAR_DEFAUT = "20X, NA 0,40"     # objectif utilisé, modifiable dans Paramètres
 MODES = ["Tracer des zones sur l'image (une par particule)",
          "La plus lumineuse (automatique)",
          "Toutes les particules, triées automatiquement (rayon moyen)"]
@@ -428,15 +430,16 @@ class AnalyseWorker(QObject):
     failed = Signal(str)
     progression = Signal(int, str)
 
-    def __init__(self, chemin, pixel_um, dt_s, config):
+    def __init__(self, chemin, pixel_um, dt_s, config, immobiles=False):
         super().__init__()
-        self.chemin, self.pixel_um, self.dt_s, self.config = chemin, pixel_um, dt_s, config
+        self.chemin, self.pixel_um, self.dt_s, self.config, self.immobiles = chemin, pixel_um, dt_s, config, immobiles
 
     @Slot()
     def run(self):
         try:
             self.config["progression"] = self.progression.emit
-            sortie = analyse_equipe.analyser_video(self.chemin, self.pixel_um, self.dt_s, self.config)
+            fonction = analyse_equipe.analyser_immobiles if self.immobiles else analyse_equipe.analyser_video
+            sortie = fonction(self.chemin, self.pixel_um, self.dt_s, self.config)
             if not isinstance(sortie, dict) or not isinstance(sortie.get("results"), dict):
                 raise ValueError("analyser_video doit renvoyer {'results': {...}, 'trajectories': {...}}")
             self.finished.emit(sortie)
@@ -465,6 +468,7 @@ class MicroscopeApp(QMainWindow):
         self.setCentralWidget(self.tabs)
         self._onglet_film()
         self._onglet_resultats()
+        self._onglet_taille()
         self._onglet_video()
         self._onglet_parametres()
         self.mode_change()
@@ -497,6 +501,7 @@ class MicroscopeApp(QMainWindow):
         gauche.addWidget(boite)
 
         choix = QGroupBox("Choix des particules")
+        self.g_choix = choix
         c = QVBoxLayout(choix)
         self.mode = QComboBox()
         self.mode.addItems(MODES)
@@ -523,6 +528,28 @@ class MicroscopeApp(QMainWindow):
         self.c_derive.setToolTip("Les particules dérivent ensemble (courant, vibrations) en plus du mouvement brownien. "
                                  "La correction retire cette dérive commune. Sans elle, D est surestimé et le rayon sous-estimé.")
         gauche.addWidget(self.c_derive)
+        self.c_immobiles = QCheckBox("Particules immobiles (taille par la largeur des taches)")
+        self.c_immobiles.setToolTip("Particules collées à la lame : diamètre estimé à partir de la largeur des taches.")
+        self.c_immobiles.toggled.connect(self.immobiles_change)
+        gauche.addWidget(self.c_immobiles)
+        self.box_imm = QGroupBox("Taille des taches")
+        fi = QFormLayout(self.box_imm)
+        self.i_na = QDoubleSpinBox()
+        self.i_na.setRange(0.05, 1.5)
+        self.i_na.setDecimals(2)
+        self.i_na.setSingleStep(0.05)
+        self.i_na.setValue(0.40)
+        self.i_na.setToolTip("Ouverture numérique de l'objectif (reprise de Paramètres).")
+        self.i_lambda = QDoubleSpinBox()
+        self.i_lambda.setRange(380, 900)
+        self.i_lambda.setDecimals(0)
+        self.i_lambda.setValue(575)
+        self.i_lambda.setSuffix(" nm")
+        self.i_lambda.setToolTip("Longueur d'onde d'émission des billes (excitation / émission : 535 / 575 nm).")
+        fi.addRow("Ouverture numérique (NA) :", self.i_na)
+        fi.addRow("Longueur d'onde d'émission :", self.i_lambda)
+        self.box_imm.setVisible(False)
+        gauche.addWidget(self.box_imm)
         self.b_analyser = QPushButton("Analyser")
         self.b_analyser.clicked.connect(self.lancer_analyse)
         gauche.addWidget(self.b_analyser)
@@ -681,7 +708,7 @@ class MicroscopeApp(QMainWindow):
         self.p_pix = QDoubleSpinBox()
         self.p_pix.setRange(0.0001, 1000)
         self.p_pix.setDecimals(4)
-        self.p_pix.setValue(0.155)
+        self.p_pix.setValue(0.186)
         self.p_pix.setSuffix(" µm/pixel")
         f.addRow("Objectif :", self.p_obj)
         f.addRow("Temps d'exposition :", self.p_expo)
@@ -690,11 +717,13 @@ class MicroscopeApp(QMainWindow):
         f.addRow("Profondeur de bit :", self.p_bits)
         f.addRow("Échelle spatiale :", self.p_pix)
         note = QLabel("Ces valeurs sont lues dans le nom du fichier quand il les contient, sinon ce sont les valeurs les "
-                      "plus probables (objectif 20X, NA 0,45). Elles sont modifiables. Le rayon varie comme 1/p²: "
+                      "plus probables (objectif 20X, NA 0,40, échelle 0,186 µm/pixel mesurée à la règle). Elles sont modifiables. Le rayon varie comme 1/p²: "
                       "une erreur sur l'échelle se retrouve doublée sur le rayon.")
         note.setWordWrap(True)
         f.addRow(note)
         layout.addWidget(cond)
+        self.p_obj.currentIndexChanged.connect(self._na_depuis_objectif)
+        self._na_depuis_objectif()
         for w in (self.p_obj, self.p_expo, self.p_dt, self.p_bits, self.p_pix):
             (w.currentIndexChanged if isinstance(w, QComboBox) else w.valueChanged).connect(self.parametres_changes)
 
@@ -916,6 +945,12 @@ class MicroscopeApp(QMainWindow):
             return
         if self.thread is not None:
             return
+        if self.c_immobiles.isChecked():
+            config = {"na": self.i_na.value(), "lambda_nm": self.i_lambda.value(),
+                      "seuil_intensite": self.p_seuil.value() / 100, "isolement_px": self.p_iso.value(),
+                      "rejet_sigma": self.p_rejet.value()}
+            self._demarrer_analyse(config, immobiles=True)
+            return
         m = self.mode.currentIndex()
         config = {"corriger_derive": "auto" if self.p_derive.isChecked() else False,
                   "seuil_intensite": self.p_seuil.value() / 100, "rejet_sigma": self.p_rejet.value(),
@@ -930,11 +965,14 @@ class MicroscopeApp(QMainWindow):
             config.update(mode="plus_lumineuse", image_depart=self.lecteur.index)
         else:
             config.update(mode="echantillon")
+        self._demarrer_analyse(config)
+
+    def _demarrer_analyse(self, config, immobiles=False):
         self.b_analyser.setEnabled(False)
         self.progression.setValue(0)
         self.l_etat.setText("Analyse en cours...")
         self.thread = QThread(self)
-        self.worker = AnalyseWorker(self.chemin, self.p_pix.value(), self.p_dt.value() / 1000, config)
+        self.worker = AnalyseWorker(self.chemin, self.p_pix.value(), self.p_dt.value() / 1000, config, immobiles)
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
         self.worker.progression.connect(self.progression_analyse)
@@ -960,8 +998,12 @@ class MicroscopeApp(QMainWindow):
             self.traces[pid] = (a[:, 0].astype(int), a[:, 1:3])
         for p in r.get("particules", []):
             self.statuts[p["id"]] = p["statut"]
-        self.remplir_resultats(r)
-        self.l_etat.setText(f"Terminé : {r['particles']} particule(s) utilisée(s).")
+        if r.get("mode") == "immobiles":
+            self.remplir_immobiles(r)
+            self.l_etat.setText(f"Terminé : largeur des taches mesurée sur {r['particles']} particule(s).")
+        else:
+            self.remplir_resultats(r)
+            self.l_etat.setText(f"Terminé : {r['particles']} particule(s) utilisée(s).")
         self.progression.setValue(100)
         self.l_video.setText(f"{len(self.traces)} trajectoire(s) calculée(s). Le rouge indique les particules écartées. "
                              "Molette ou curseur : zoom. Glisser : déplacer. \"Suivre\" : centrer sur une particule.")
@@ -974,7 +1016,7 @@ class MicroscopeApp(QMainWindow):
         c.blockSignals(False)
         self.lecteur2.charger(self.film.n, self.p_dt.value() / 1000)
         self.b_avi.setEnabled(True)
-        self.tabs.setCurrentIndex(1)
+        self.tabs.setCurrentIndex(2 if r.get("mode") == "immobiles" else 1)
 
     @Slot(str)
     def analyse_echouee(self, message):
@@ -992,7 +1034,20 @@ class MicroscopeApp(QMainWindow):
     # ------------------------------------------------------------------ résultats
     RAISONS_COURTES = {"intensité trop faible (hors focus)": "hors focus", "chevauchement (autre particule trop proche)": "chevauchement",
                        "valeur aberrante (D trop éloigné de la médiane)": "valeur aberrante", "saut dans la trajectoire": "saut",
+                       "valeur aberrante (largeur trop éloignée de la médiane)": "largeur aberrante",
+                       "ajustement impossible (tache saturée ou déformée)": "ajustement impossible",
                        "D négatif ou nul": "D négatif"}
+
+    ORDRE_RAISONS = ["largeur aberrante", "valeur aberrante", "chevauchement", "hors focus"]
+
+    def _trier_lignes(self, lignes):
+        """Particules gardées d'abord, puis écartées : largeur aberrante, chevauchement, hors focus, autres."""
+        def cle(p):
+            if p["statut"] == "utilisée":
+                return (0, 0)
+            court_ = self.RAISONS_COURTES.get(p["raison"], p["raison"])
+            return (1, self.ORDRE_RAISONS.index(court_) if court_ in self.ORDRE_RAISONS else len(self.ORDRE_RAISONS))
+        return sorted(lignes, key=cle)          # tri stable : l'ordre des numéros est conservé dans chaque groupe
 
     @staticmethod
     def _nombre(v, fmt="{:.0f}", unite=""):
@@ -1049,19 +1104,20 @@ class MicroscopeApp(QMainWindow):
                       "Rayon hydrodynamique a = kB T / (6 π η D)",
                       "Incertitude statistique sur le rayon de cette particule (± nm), estimée sur 5 blocs de sa trajectoire"]
         if ecartees or atyp:
-            titres.insert(1, "Remarque")
-            infobulles.insert(1, "Écartée : exclue de la moyenne. Atypique : gardée, mais D très éloigné de celui du film.")
+            titres.insert(1, "Remarque" if atyp else "Raison d'écartement")
+            infobulles.insert(1, "Raison pour laquelle la particule est exclue de la moyenne" +
+                              (". Atypique : gardée, mais D très éloigné de celui du film." if atyp else ""))
         self.tableau.setColumnCount(len(titres))
         self.tableau.setHorizontalHeaderLabels(titres)
         for j, t in enumerate(infobulles):
             self.tableau.horizontalHeaderItem(j).setToolTip(t)
         self.tableau.setRowCount(len(lignes))
-        for i, p in enumerate(lignes):
+        for i, p in enumerate(self._trier_lignes(lignes)):
             iv = p.get("intensite_rel")
             cellules = [f"{court(p['id'])}"]
             if ecartees or atyp:
                 if p["statut"] != "utilisée":
-                    cellules.append("écartée : " + self.RAISONS_COURTES.get(p["raison"], p["raison"]))
+                    cellules.append(self.RAISONS_COURTES.get(p["raison"], p["raison"]))
                 else:
                     cellules.append("atypique" if p.get("atypique") else "")
             cellules += [f"{iv * 100:.0f}" if iv is not None else "-", self._nombre(p["D_um2_s"], "{:.4f}"),
@@ -1261,6 +1317,235 @@ class MicroscopeApp(QMainWindow):
                 for i, (t, v) in enumerate(zip(r["lag_s"], r["msd_um2"])):
                     w.writerow([t, v, r["msd_erreur_um2"][i] if i < len(r.get("msd_erreur_um2", [])) else "",
                                 r["fit_msd_um2"][i] if i < len(r["fit_msd_um2"]) else ""])
+            self.statusBar().showMessage("Résultats exportés : " + chemin)
+        except OSError as exc:
+            QMessageBox.warning(self, "Exportation", str(exc))
+
+    # ------------------------------------------------------------------ particules immobiles : taille des taches
+    def _na_depuis_objectif(self, *_):
+        try:
+            self.i_na.setValue(float(self.p_obj.currentText().split("NA")[1].replace(",", ".")))
+        except (IndexError, ValueError):
+            pass
+
+    def immobiles_change(self, actif):
+        self.box_imm.setVisible(actif)
+        self.g_choix.setEnabled(not actif)
+        self.c_derive.setEnabled(not actif)
+        self.b_analyser.setText("Analyser (taille des taches)" if actif else "Analyser")
+
+    def _onglet_taille(self):
+        page = QWidget()
+        racine = QVBoxLayout(page)
+        banniere = QFrame()
+        banniere.setStyleSheet("QFrame { background: #1d2633; border: 1px solid #394657; border-radius: 10px; }")
+        b = QHBoxLayout(banniere)
+
+        def panneau(couleur):
+            titre, valeur, sous = QLabel(""), QLabel(""), QLabel("")
+            for lab, css in ((titre, "font-size: 15px; color: #b9c7d8;"),
+                             (valeur, f"font-size: 34px; font-weight: bold; color: {couleur};"),
+                             (sous, "font-size: 12px; color: #8d9bb0;")):
+                lab.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                lab.setWordWrap(True)
+                lab.setStyleSheet(css + " background: transparent;")
+            v = QVBoxLayout()
+            for w_ in (titre, valeur, sous):
+                v.addWidget(w_)
+            return titre, valeur, sous, v
+        self.t_titre, self.t_valeur, self.t_sous, vg = panneau("#7fd1ff")
+        self.t_titre.setText("Aucun résultat : cochez « Particules immobiles » et lancez une analyse")
+        b.addLayout(vg, 1)
+        racine.addWidget(banniere)
+        cartes = QHBoxLayout()
+        self.cartes_i = {}
+        for cle, titre in (("sigma", "σ moyen des taches (y)"), ("optique", "σ optique"),
+                           ("mouvement", "D apparent"), ("n", "Particules utilisées")):
+            carte = QFrame()
+            carte.setStyleSheet("QFrame { background: #26303d; border-radius: 8px; }")
+            v = QVBoxLayout(carte)
+            v.setContentsMargins(10, 6, 10, 6)
+            valeur = QLabel("-")
+            valeur.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            valeur.setStyleSheet("font-size: 19px; font-weight: bold; background: transparent;")
+            legende = QLabel(titre)
+            legende.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            legende.setWordWrap(True)
+            legende.setStyleSheet("font-size: 11px; color: #9fb0c6; background: transparent;")
+            v.addWidget(valeur)
+            v.addWidget(legende)
+            cartes.addWidget(carte, 1)
+            self.cartes_i[cle] = valeur
+        racine.addLayout(cartes)
+        bas = QHBoxLayout()
+        gauche = QVBoxLayout()
+        self.tableau_i = QTableWidget(0, 0)
+        self.tableau_i.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.tableau_i.horizontalHeader().setStretchLastSection(True)
+        self.tableau_i.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.tableau_i.verticalHeader().setVisible(False)
+        gauche.addWidget(self.tableau_i, 1)
+        self.t_notes_i = QPlainTextEdit()
+        self.t_notes_i.setReadOnly(True)
+        self.t_notes_i.setMaximumHeight(150)
+        gauche.addWidget(self.t_notes_i)
+        self.b_export_i = QPushButton("Exporter les résultats (CSV)")
+        self.b_export_i.setEnabled(False)
+        self.b_export_i.clicked.connect(self.exporter_immobiles)
+        gauche.addWidget(self.b_export_i)
+        bas.addLayout(gauche, 5)
+        droite = QVBoxLayout()
+        self.g_largeurs = Graphique("Largeurs : lancez une analyse")
+        self.g_msd_i = Graphique("MSD résiduel : lancez une analyse")
+        droite.addWidget(self.g_largeurs, 1)
+        droite.addWidget(self.g_msd_i, 1)
+        bas.addLayout(droite, 4)
+        racine.addLayout(bas, 1)
+        self.tabs.addTab(page, "Taille des taches")
+
+    def remplir_immobiles(self, r):
+        d, inc = r["d_calcul_um"], r["d_calcul_inc_um"]
+        self.t_titre.setText("Diamètre estimé (calcul de l'optique)")
+        if np.isfinite(d):
+            self.t_valeur.setText(f"d = {d:.2f} ± {inc:.2f} µm" if np.isfinite(inc) else f"d = {d:.2f} µm")
+        else:
+            self.t_valeur.setText("non calculable")
+        self.t_sous.setText(f"σ² = σ optique² + (d / 4,47)²   |   σ = {r['sigma_y_um'] * 1000:.0f} nm, "
+                            f"σ optique = {r['sigma_optique_um'] * 1000:.0f} nm (0,21 λ / NA)")
+        n = r["particles"]
+        sy, sy_inc = r["sigma_y_um"] * 1000, r["sigma_y_inc_um"] * 1000
+        self.cartes_i["sigma"].setText(f"{sy:.0f} ± {sy_inc:.0f} nm" if np.isfinite(sy_inc) else f"{sy:.0f} nm")
+        self.cartes_i["optique"].setText(f"{r['sigma_optique_um'] * 1000:.0f} nm")
+        D = r.get("D_app_um2_s", float("nan"))
+        self.cartes_i["mouvement"].setText(("immobiles : " if r.get("immobile") else "") + (f"D = {D:.4f} µm²/s" if np.isfinite(D) else "-"))
+        self.cartes_i["n"].setText(f"{n} sur {r['n_suivies']}")
+        notes = list(r.get("notes", []))
+        self.t_notes_i.setPlainText("\n".join(notes))
+        lignes = r["particules"]
+        ecartees = [p for p in lignes if p["statut"] != "utilisée"]
+        titres = ["Particule", "Raison d'écartement", "Intensité (% réf.)", "σ y (nm)", "± images (nm)", "σ x (nm)"]
+        infobulles = ["Numéro de la particule", "Raison pour laquelle la particule est exclue de la moyenne",
+                      "Contraste médian, en % de l'intensité de référence",
+                      "Largeur de la tache (y), moyenne sur toutes les images",
+                      "Écart-type de la moyenne sur les images",
+                      "Largeur selon x (étirée par la vibration)"]
+        self.tableau_i.setColumnCount(len(titres))
+        self.tableau_i.setHorizontalHeaderLabels(titres)
+        for j, t in enumerate(infobulles):
+            self.tableau_i.horizontalHeaderItem(j).setToolTip(t)
+        self.tableau_i.setRowCount(len(lignes))
+        for i, p in enumerate(self._trier_lignes(lignes)):
+            iv = p.get("intensite_rel")
+            cell = [court(p["id"]), self.RAISONS_COURTES.get(p["raison"], p["raison"]) if p["statut"] != "utilisée" else "",
+                    f"{iv * 100:.0f}" if iv is not None else "-", self._nombre(p["sigma_y_um"] * 1000),
+                    self._nombre(p["sigma_y_inc_um"] * 1000, "{:.1f}"), self._nombre(p["sigma_x_um"] * 1000)]
+            for j, v in enumerate(cell):
+                it = QTableWidgetItem(v)
+                it.setTextAlignment((Qt.AlignmentFlag.AlignLeft if j == 1 else Qt.AlignmentFlag.AlignCenter) | Qt.AlignmentFlag.AlignVCenter)
+                if p["statut"] != "utilisée":
+                    it.setForeground(QColor("#ff8a80"))
+                self.tableau_i.setItem(i, j, it)
+        self.b_export_i.setEnabled(True)
+        self.dessiner_largeurs(r)
+        self.dessiner_msd_immobiles(r)
+
+    def dessiner_largeurs(self, r):
+        util = [p for p in r["particules"] if p["statut"] == "utilisée"]
+        vals = np.array([p["sigma_y_um"] * 1000 for p in util], float)
+        k = len(vals)
+        moy, se = r["sigma_y_um"] * 1000, r["sigma_y_inc_um"] * 1000
+        se = se if np.isfinite(se) else 0.0
+        marge = max((vals.max() - vals.min()) * 0.15, 20.0)
+        xlim = (float(vals.min() - marge), float(vals.max() + marge))
+        comptes, bords = np.histogram(vals, bins=int(min(12, max(4, np.sqrt(k)))), range=xlim)
+        s_opt = r["sigma_optique_um"] * 1000
+        lignes = [(f"Moyenne : {moy:.0f} ± {se:.0f} nm", "#f3b35b"),
+                  (f"σ optique : {s_opt:.0f} nm" + ("" if xlim[0] <= s_opt <= xlim[1] else " (hors graphique)"), "#9be58a"),
+                  (f"{k} particules", "#cfd8e4")]
+        ylim0 = (0.0, float(comptes.max()))
+
+        def dessin(p, w, h):
+            xy, (x0, y0, x1, y1) = cadre_axes(p, w, h, f"Largeur des taches (σ, direction y), {k} particules", "σ (nm)",
+                                             "Nombre de particules", xlim, avec_legende(*ylim0, h, lignes))
+            for c, b0, b1 in zip(comptes, bords[:-1], bords[1:]):
+                ax, ay = xy(b0, c)
+                bx, by = xy(b1, 0)
+                p.fillRect(int(ax) + 1, int(ay), max(int(bx - ax) - 2, 1), int(by - ay), QColor("#55bde9"))
+            gx0, _ = xy(moy - se, 0)
+            gx1, _ = xy(moy + se, 0)
+            p.fillRect(int(gx0), y0, max(int(gx1 - gx0), 2), y1 - y0, QColor(243, 179, 91, 70))
+            mx, _ = xy(moy, 0)
+            p.setPen(QPen(QColor("#f3b35b"), 2))
+            p.drawLine(int(mx), y0, int(mx), y1)
+            if xlim[0] <= s_opt <= xlim[1]:
+                ox, _ = xy(s_opt, 0)
+                p.setPen(QPen(QColor("#9be58a"), 2, Qt.PenStyle.DashLine))
+                p.drawLine(int(ox), y0, int(ox), y1)
+            p.setClipping(False)
+            bloc_texte(p, x0 + 6, y0 + 4, lignes)
+        self.g_largeurs.definir(dessin)
+
+    def dessiner_msd_immobiles(self, r):
+        lag, msd = np.array(r.get("msd_lag_s", []), float), np.array(r.get("msd_um2", []), float)
+        if len(lag) < 3:
+            self.g_msd_i.definir(None, "MSD indisponible (trop peu de particules suivies)")
+            return
+        err = np.array(r.get("msd_erreur_um2", []), float)
+        D, c0, deb = r["D_app_um2_s"], r["msd_c_um2"], int(r.get("msd_debut_fit", 0))
+        xmax = float(lag.max()) * 1.05
+        haut = float(max(np.nanmax(msd + np.nan_to_num(err)), 4 * D * xmax + c0))
+        bas = min(0.0, float(np.nanmin(msd - np.nan_to_num(err))) * 1.1)
+        a_app = r.get("rayon_app_nm", float("nan"))
+        lignes = [(f"MSD = 4 D τ + c :  D = {D:.4f} µm²/s", "#f3b35b"),
+                  (f"{int(r['particles'])} particules, vibration retirée", "#cfd8e4")]
+
+        def dessin(p, w, h):
+            xy, (x0, y0, x1, y1) = cadre_axes(p, w, h, "Mouvement résiduel : MSD en fonction du délai", "Délai τ (s)",
+                                             "MSD moyen (µm²)", (0, xmax), avec_legende(bas, haut * 1.04, h, lignes))
+            p.setPen(QPen(QColor("#f3b35b"), 2))
+            a, b = xy(0, c0), xy(xmax, 4 * D * xmax + c0)
+            p.drawLine(int(a[0]), int(a[1]), int(b[0]), int(b[1]))
+            for i, (t, v) in enumerate(zip(lag, msd)):
+                px, py = xy(t, v)
+                couleur = QColor("#55bde9") if i >= deb else QColor("#8d9bb0")
+                if i < len(err) and np.isfinite(err[i]) and err[i] > 0:
+                    _, hy = xy(t, v + err[i])
+                    _, by = xy(t, v - err[i])
+                    p.setPen(QPen(couleur, 1))
+                    p.drawLine(int(px), int(hy), int(px), int(by))
+                p.setPen(QPen(couleur, 1.5))
+                p.setBrush(QBrush(couleur))
+                p.drawEllipse(int(px) - 3, int(py) - 3, 6, 6)
+            p.setClipping(False)
+            bloc_texte(p, x0 + 6, y0 + 4, lignes)
+        self.g_msd_i.definir(dessin)
+
+    def exporter_immobiles(self):
+        if not self.sortie or self.sortie["results"].get("mode") != "immobiles":
+            return
+        r = self.sortie["results"]
+        chemin, _ = QFileDialog.getSaveFileName(self, "Exporter les résultats", "taille_des_taches.csv", "CSV (*.csv)")
+        if not chemin:
+            return
+        try:
+            with open(chemin, "w", newline="", encoding="utf-8-sig") as f:
+                w = csv.writer(f)
+                w.writerow(["film", Path(self.chemin).name])
+                for k, u in (("particles", "nombre"), ("sigma_y_um", "um"), ("sigma_y_inc_um", "um"), ("sigma_x_um", "um"),
+                             ("na", ""), ("lambda_nm", "nm"), ("sigma_optique_um", "um"), ("d_calcul_um", "um"),
+                             ("d_calcul_inc_um", "um"), ("D_app_um2_s", "um2/s"), ("rayon_app_nm", "nm")):
+                    w.writerow([k, r.get(k, ""), u])
+                w.writerow(["pixel_um", r["pixel_um"], "um/pixel"])
+                w.writerow([])
+                w.writerow(["particule", "statut", "raison", "intensite_rel", "sigma_y_um", "sigma_y_inc_images_um", "sigma_x_um",
+                            "images_ajustees", "images_suivies"])
+                for p in r["particules"]:
+                    w.writerow([p["id"], p["statut"], p["raison"], p.get("intensite_rel", ""), p["sigma_y_um"],
+                                p["sigma_y_inc_um"], p["sigma_x_um"], p["n_ajustements"], p["n_images"]])
+                w.writerow([])
+                w.writerow(["lag_s", "msd_um2", "erreur_type_um2"])
+                for t, v, e in zip(r["msd_lag_s"], r["msd_um2"], r["msd_erreur_um2"]):
+                    w.writerow([t, v, e])
             self.statusBar().showMessage("Résultats exportés : " + chemin)
         except OSError as exc:
             QMessageBox.warning(self, "Exportation", str(exc))
